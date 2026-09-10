@@ -63,7 +63,7 @@ export class MemberResolver {
 		return `hi ${authMember.memberNick}, you are ${authMember.memberType} (memberId: ${authMember._id})`;
 	}
 
-	@Roles(MemberType.USER)
+	@Roles(MemberType.CLIENT)
 	@UseGuards(AuthGuard)
 	@Query(() => String)
 	public async checkAuthRoles(@AuthMember() authMember: Member): Promise<string> {
@@ -84,7 +84,11 @@ export class MemberResolver {
 		console.log('Mutation: updateMember');
 		// console.log('memberId', memberId);
 
+		// Self-update must never change privileged fields; only ADMIN may
+		// change these via updateMemberByAdmin.
 		delete (input as Partial<MemberUpdate>)._id;
+		delete (input as Partial<MemberUpdate>).memberType;
+		delete (input as Partial<MemberUpdate>).memberStatus;
 
 		return this.memberService.updateMember(memberId, input);
 	}
