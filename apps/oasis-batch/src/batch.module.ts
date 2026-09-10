@@ -5,8 +5,8 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MongooseModule } from '@nestjs/mongoose';
 import { DatabaseModule } from './database/database.module';
-import PropertySchema from 'apps/nestar-api/src/schema/Property.model';
-import MemberSchema from 'apps/nestar-api/src/schema/Member.model';
+import PropertySchema from 'apps/oasis-api/src/schema/Property.model';
+import MemberSchema from 'apps/oasis-api/src/schema/Member.model';
 
 @Module({
 	imports: [
