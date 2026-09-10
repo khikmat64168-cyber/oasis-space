@@ -51,7 +51,7 @@ const MemberSchema = new Schema(
 			type: String,
 		},
 
-		memberProperties: {
+		memberPlants: {
 			type: Number,
 			default: 0,
 		},

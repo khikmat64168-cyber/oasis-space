@@ -5,7 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MongooseModule } from '@nestjs/mongoose';
 import { DatabaseModule } from './database/database.module';
-import PropertySchema from 'apps/oasis-api/src/schema/Property.model';
+import PlantSchema from 'apps/oasis-api/src/schema/Plant.model';
 import MemberSchema from 'apps/oasis-api/src/schema/Member.model';
 
 @Module({
@@ -14,7 +14,7 @@ import MemberSchema from 'apps/oasis-api/src/schema/Member.model';
 		ScheduleModule.forRoot(),
 		DatabaseModule,
 		MongooseModule.forFeature([
-			{ name: 'Property', schema: PropertySchema },
+			{ name: 'Plant', schema: PlantSchema },
 			{ name: 'Member', schema: MemberSchema },
 		]),
 	],

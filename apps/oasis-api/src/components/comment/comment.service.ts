@@ -5,7 +5,7 @@ import { Model, ObjectId } from 'mongoose';
 import { CommentInput, CommentsInquiry } from '../../libs/dto/member/comment/comment.input';
 import { Comment, Comments } from '../../libs/dto/member/comment/comment';
 import { MemberService } from '../member/member.service';
-import { PropertyService } from '../property/property.service';
+import { PlantService } from '../plant/plant.service';
 import { BoardArticleService } from '../board-article/board-article.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { CommentUpdate } from '../../libs/dto/member/comment/comment.update';
@@ -17,7 +17,7 @@ export class CommentService {
 	constructor(
 		@InjectModel('Comment') private readonly commentModel: Model<Comment>,
 		private readonly memberService: MemberService,
-		private readonly propertyService: PropertyService,
+		private readonly plantService: PlantService,
 		private readonly boardArticleService: BoardArticleService,
 	) {}
 
@@ -33,10 +33,10 @@ export class CommentService {
 		}
 
 		switch (input.commentGroup) {
-			case CommentGroup.PROPERTY:
-				await this.propertyService.propertyStatsEditor({
+			case CommentGroup.PLANT:
+				await this.plantService.plantStatsEditor({
 					_id: input.commentRefId,
-					targetKey: 'propertyComments',
+					targetKey: 'plantComments',
 					modifier: 1,
 				});
 				break;
