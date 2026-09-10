@@ -28,7 +28,31 @@ Full assessment below (Part A).
 - **Verified:** `nest build oasis-api` ✅, `nest build oasis-batch` ✅, `tsc --noEmit` clean ✅, API boots + Mongo connects to `Oasis` + GraphQL `{ sayHello }` returns ✅.
 - **Not yet done (by design):** domain still speaks real-estate (`Property`, `MemberType.USER`) — that's Phase 2/3.
 
-### ⏭ Next: Phase 2 — Member + auth (`MemberType.USER → CLIENT`)
+### ✅ Phase 2 — Member + auth (done)
+- `MemberType.USER → CLIENT` (enum `member.enums.ts`, `Member.model` default, `member.resolver` `@Roles`). `AGENT`/`ADMIN` already correct.
+- Fixed bug #6: `getAllMembersByAdmin` filter `match.MemberStatus → match.memberStatus`.
+- Fixed bug #7: `MemberUpdate` `deleteAt → deletedAt`.
+- **Verified (real GraphQL + Oasis DB):** signup defaults to CLIENT; login/JWT ok; `checkAuth` ok; RolesGuard forbids CLIENT and allows ADMIN on `getAllMembersByAdmin`; `memberStatus` filter now works.
+- 🟢 **Security fix (done):** closed two role-escalation vectors — (1) removed `memberType` from public `signup` `MemberInput`; (2) `updateMember` (self) now strips `memberType` + `memberStatus`. Verified: ADMIN signup rejected; CLIENT self-update to ADMIN/BLOCK ignored while normal fields still update. AGENT/ADMIN are now assignable **only** by an ADMIN via `updateMemberByAdmin`.
+  - ⚠️ Bootstrap note: since signup can no longer mint an ADMIN, the **first admin must be seeded** (set `memberType:'ADMIN'` directly on one member doc in the `Oasis` DB, or via a one-off script). All later agents/admins are promoted by that admin.
+
+### ✅ Phase 3 — Plant domain (done)
+- New: `plant.enum.ts` (PlantType 11, PlantCategory 7, PlantStatus, PlantLocation 19 Korean cities), `Plant.model.ts` (collection `plants`, 2 indexes), flattened DTOs `libs/dto/plant/{plant,plant.input,plant.update}.ts`, and `components/plant/{service,resolver,module}.ts`.
+- New plant fields: `plantType` + `plantCategory` (distinct axes), `supplyLocation` + `deliveryRadius` (supply origin, ≠ order delivery), `plantHeight` + `potSize`; dropped real-estate fields (square/beds/rooms/barter/rent).
+- CRUD + AGENT-only create/update + ADMIN ops + search (type/category/location/price/height/text) + `$facet` pagination + `meLiked` + view/like stats + `memberPlants`.
+- Repointed shared code: Like/View/Comment/Notification group `PROPERTY→PLANT`; `like.service`→`getFavoritePlants`, `view.service`→`getVisitedPlants`, `config` favorite/visit lookups→`plants`; `comment.service` routes plant comments via `PlantService`; `components`/`comments` modules wire `PlantModule`.
+- Member: `memberProperties → memberPlants` (schema + DTO).
+- Batch (pulled forward to keep compiling): migrated to `Plant`/`PlantStatus`, `batchTopPlants`, `memberPlants`; **fixed the two cron copy-paste bugs** (rollback + agents now call the right service methods). Scheduling/formula final verification remains Phase 7.
+- Deleted: `components/property/*`, `dto/member/property/*`, `property.enum.ts`, `Property.model.ts`. No `property` references remain (except none — verified).
+- **Verified (real GraphQL + Oasis DB):** all 8 plant-domain checks passed; both apps build; `tsc --noEmit` clean.
+- Note: DTO flattening applied to `plant` (and `order` later); the social DTOs under `dto/member/*` are left in place and flattened in Phase 10.
+
+### ✅ Phase 4 — Plant personalization + social (done — verification only)
+- No code changes: the social layer was already repointed to PLANT in Phase 3. This phase exercised it end-to-end against the real Oasis DB.
+- **Verified:** follow (subscribe/unsubscribe CLIENT↔AGENT, self-subscribe denied, `memberFollowers`/`memberFollowings` consistent, `meFollowed`); comments on **PLANT + MEMBER(agent) + ARTICLE** (each stat `plantComments`/`memberComments`/`articleComments` increments) + `getComments` with `memberData`; member like (`likeTargetMember` → `memberLikes`, `getAgents` `meLiked`); plant `meLiked` for authenticated viewer; favorites/visited (Phase 3).
+- Articles confirmed working (community board kept per your decision).
+
+### ⏭ Next: Phase 5 — Order domain (NEW)
 
 ---
 
