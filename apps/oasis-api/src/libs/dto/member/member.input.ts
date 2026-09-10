@@ -20,10 +20,9 @@ export class MemberInput {
 	@Field(() => String)
 	memberPhone!: string;
 
-	@IsOptional()
-	@Field(() => MemberType, { nullable: true })
-	memberType?: MemberType;
-
+	// NOTE: memberType is intentionally NOT accepted here. Public signup always
+	// creates a CLIENT (schema default). AGENT/ADMIN are assigned only by an
+	// ADMIN via updateMemberByAdmin — never self-selected at registration.
 	@IsOptional()
 	@Field(() => MemberAuthType, { nullable: true })
 	memberAuthType?: MemberAuthType;
