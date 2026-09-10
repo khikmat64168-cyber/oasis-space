@@ -4,8 +4,8 @@ import { Model, ObjectId } from 'mongoose';
 import { View } from '../../libs/dto/member/view/view';
 import { ViewInput } from '../../libs/dto/member/view/view.input';
 import { T } from '../../libs/types/common';
-import { Properties } from '../../libs/dto/member/property/property';
-import { OrdinaryInquiry } from '../../libs/dto/member/property/property.input';
+import { Plants } from '../../libs/dto/plant/plant';
+import { OrdinaryInquiry } from '../../libs/dto/plant/plant.input';
 import { ViewGroup } from '../../libs/enums/view.enum';
 import { lookupVisit } from '../../libs/config';
 
@@ -30,9 +30,9 @@ export class ViewService {
 		return await this.viewModel.findOne(search).exec();
 	}
 
-	public async getVisitedProperties(memberId: ObjectId, input: OrdinaryInquiry): Promise<Properties> {
+	public async getVisitedPlants(memberId: ObjectId, input: OrdinaryInquiry): Promise<Plants> {
 		const { page, limit } = input;
-		const match: T = { viewGroup: ViewGroup.PROPERTY, memberId: memberId };
+		const match: T = { viewGroup: ViewGroup.PLANT, memberId: memberId };
 
 		const data: T = await this.viewModel
 			.aggregate([
@@ -40,20 +40,20 @@ export class ViewService {
 				{ $sort: { updatedAt: -1 } },
 				{
 					$lookup: {
-						from: 'properties',
+						from: 'plants',
 						localField: 'viewRefId',
 						foreignField: '_id',
-						as: 'visitedProperty',
+						as: 'visitedPlant',
 					},
 				},
-				{ $unwind: '$visitedProperty' },
+				{ $unwind: '$visitedPlant' },
 				{
 					$facet: {
 						list: [
 							{ $skip: (page - 1) * limit },
 							{ $limit: limit },
 							lookupVisit,
-							{ $unwind: '$visitedProperty.memberData' },
+							{ $unwind: '$visitedPlant.memberData' },
 						],
 						metaCounter: [{ $count: 'total' }],
 					},
@@ -61,8 +61,8 @@ export class ViewService {
 			])
 			.exec();
 
-		const result: Properties = { list: [], metaCounter: data[0].metaCounter };
-		result.list = data[0].list.map((ele) => ele.visitedProperty);
+		const result: Plants = { list: [], metaCounter: data[0].metaCounter };
+		result.list = data[0].list.map((ele) => ele.visitedPlant);
 
 		return result;
 	}

@@ -4,14 +4,13 @@ export const availableAgentsSorts = ['createdAt', 'updatedAt', 'memberLikes', 'm
 
 export const availableMembersSorts = ['createdAt', 'updatedAt', 'memberLikes', 'memberViews'];
 
-export const availableOptions = ['propertyBarter', 'propertyRent'];
-export const availablePropertySorts = [
+export const availablePlantSorts = [
 	'createdAt',
 	'updatedAt',
-	'propertyLikes',
-	'propertyViews',
-	'propertyRank',
-	'propertyPrice',
+	'plantLikes',
+	'plantViews',
+	'plantRank',
+	'plantPrice',
 ];
 
 export const availableBoardsArticleSorts = ['createdAt', 'updatedAt', 'articleLikes', 'articleViews'];
@@ -124,18 +123,18 @@ export const lookupMember = {
 export const lookupFavorite = {
 	$lookup: {
 		from: 'members',
-		localField: 'favoriteProperty.memberId',
+		localField: 'favoritePlant.memberId',
 		foreignField: '_id',
-		as: 'favoriteProperty.memberData',
+		as: 'favoritePlant.memberData',
 	},
 };
 
 export const lookupVisit = {
 	$lookup: {
 		from: 'members',
-		localField: 'visitedProperty.memberId',
+		localField: 'visitedPlant.memberId',
 		foreignField: '_id',
-		as: 'visitedProperty.memberData',
+		as: 'visitedPlant.memberData',
 	},
 };
 

@@ -1,12 +1,12 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Like, MeLiked } from '../../libs/dto/member/like/like';
 import { Model, ObjectId } from 'mongoose';
 import { LikeInput } from '../../libs/dto/member/like/like.input';
 import { Message } from '../../libs/Errors';
 import { T } from '../../libs/types/common';
-import { Properties } from '../../libs/dto/member/property/property';
-import { OrdinaryInquiry } from '../../libs/dto/member/property/property.input';
+import { Plants } from '../../libs/dto/plant/plant';
+import { OrdinaryInquiry } from '../../libs/dto/plant/plant.input';
 import { LikeGroup } from '../../libs/enums/like.enum';
 import { lookupFavorite } from '../../libs/config';
 
@@ -41,9 +41,9 @@ export class LikeService {
 		return result ? { memberId: memberId, likeRefId: likeRefId, myFavorite: true } : null;
 	}
 
-	public async getFavoritesProperties(memberId: ObjectId, input: OrdinaryInquiry): Promise<Properties> {
+	public async getFavoritePlants(memberId: ObjectId, input: OrdinaryInquiry): Promise<Plants> {
 		const { page, limit } = input;
-		const match: T = { likeGroup: LikeGroup.PROPERTY, memberId: memberId };
+		const match: T = { likeGroup: LikeGroup.PLANT, memberId: memberId };
 
 		const data: T = await this.likeModel
 			.aggregate([
@@ -51,20 +51,20 @@ export class LikeService {
 				{ $sort: { updatedAt: -1 } },
 				{
 					$lookup: {
-						from: 'properties',
+						from: 'plants',
 						localField: 'likeRefId',
 						foreignField: '_id',
-						as: 'favoriteProperty',
+						as: 'favoritePlant',
 					},
 				},
-				{ $unwind: '$favoriteProperty' },
+				{ $unwind: '$favoritePlant' },
 				{
 					$facet: {
 						list: [
 							{ $skip: (page - 1) * limit },
 							{ $limit: limit },
 							lookupFavorite,
-							{ $unwind: '$favoriteProperty.memberData' },
+							{ $unwind: '$favoritePlant.memberData' },
 						],
 						metaCounter: [{ $count: 'total' }],
 					},
@@ -72,11 +72,9 @@ export class LikeService {
 			])
 			.exec();
 
-		const result: Properties = { list: [], metaCounter: data[0].metaCounter };
-		result.list = data[0].list.map((ele) => ele.favoriteProperty);
+		const result: Plants = { list: [], metaCounter: data[0].metaCounter };
+		result.list = data[0].list.map((ele) => ele.favoritePlant);
 
 		return result;
 	}
 }
-
-
