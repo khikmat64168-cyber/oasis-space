@@ -52,5 +52,5 @@ export class MemberUpdate {
 	@Field(() => MemberAuthType, { nullable: true })
 	memberAuthType?: MemberAuthType;
 
-	deleteAt?: Date;
+	deletedAt?: Date;
 }
