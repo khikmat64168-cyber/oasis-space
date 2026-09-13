@@ -15,6 +15,17 @@ export const availablePlantSorts = [
 
 export const availableBoardsArticleSorts = ['createdAt', 'updatedAt', 'articleLikes', 'articleViews'];
 
+export const availableOrderSorts = ['createdAt', 'updatedAt', 'installationDate', 'totalPrice'];
+
+export const availableAccessorySorts = [
+	'createdAt',
+	'updatedAt',
+	'accessoryLikes',
+	'accessoryViews',
+	'accessoryRank',
+	'accessoryPrice',
+];
+
 export const availableCommentSorts = ['createdAt', 'updatedAt'];
 // IMAGE CONFIGURATION (config.js)
 import { v4 as uuidv4 } from 'uuid';
@@ -30,6 +41,11 @@ export const ensureUploadDir = (dir: string) => {
 
 export const validMimeTypes = ['image/png', 'image/jpg', 'image/jpeg'];
 export const validImageExtensions = ['.png', '.jpg', '.jpeg'];
+
+// SECURITY: upload target must be one of a fixed set of subfolders. This blocks
+// path traversal (e.g. target = "../../etc") when building the upload path.
+export const validImageTargets = ['member', 'plant', 'accessory', 'article'];
+export const isValidTarget = (target: string): boolean => validImageTargets.includes(target);
 
 export const isValidImage = (filename: string, mimetype: string): boolean => {
 	const ext = path.parse(filename).ext.toLowerCase();
@@ -135,6 +151,24 @@ export const lookupVisit = {
 		localField: 'visitedPlant.memberId',
 		foreignField: '_id',
 		as: 'visitedPlant.memberData',
+	},
+};
+
+export const lookupFavoriteAccessory = {
+	$lookup: {
+		from: 'members',
+		localField: 'favoriteAccessory.memberId',
+		foreignField: '_id',
+		as: 'favoriteAccessory.memberData',
+	},
+};
+
+export const lookupVisitAccessory = {
+	$lookup: {
+		from: 'members',
+		localField: 'visitedAccessory.memberId',
+		foreignField: '_id',
+		as: 'visitedAccessory.memberData',
 	},
 };
 

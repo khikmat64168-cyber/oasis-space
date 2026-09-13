@@ -11,7 +11,6 @@
  */
 
 import { registerEnumType } from '@nestjs/graphql';
-import { register } from 'module';
 
 export enum HttpCode {
 	OK = 200,
@@ -45,6 +44,11 @@ export enum Message {
 	NOT_ALLOWED_REQUEST = 'Not Allowed Request!',
 	PROVIDE_ALLOWED_FORMAT = 'Please provide jpg, jpeg or png images!',
 	SELF_SUBSCRIPTION_DENIED = 'Self subscription is denied!',
+
+	// Order
+	INVALID_ORDER_TRANSITION = 'This order status transition is not allowed!',
+	INVALID_INSTALLATION_DATE = 'Installation date must be in the future!',
+	NOT_YOUR_ORDER = 'You are not allowed to access or modify this order!',
 }
 
 export enum Direction {
