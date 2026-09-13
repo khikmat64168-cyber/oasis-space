@@ -52,7 +52,89 @@ Full assessment below (Part A).
 - **Verified:** follow (subscribe/unsubscribe CLIENT↔AGENT, self-subscribe denied, `memberFollowers`/`memberFollowings` consistent, `meFollowed`); comments on **PLANT + MEMBER(agent) + ARTICLE** (each stat `plantComments`/`memberComments`/`articleComments` increments) + `getComments` with `memberData`; member like (`likeTargetMember` → `memberLikes`, `getAgents` `meLiked`); plant `meLiked` for authenticated viewer; favorites/visited (Phase 3).
 - Articles confirmed working (community board kept per your decision).
 
-### ⏭ Next: Phase 5 — Order domain (NEW)
+### ✅ Phase 5 — Order domain (done)
+- New: `order.enum.ts` (OrderStatus), `Order.model.ts` (collection `orders`, 3 indexes), flattened DTOs `libs/dto/order/{order,order.input,order.update}.ts`, `components/order/{service,resolver,module}.ts`; added order messages to `Errors.ts` + `availableOrderSorts` to config; wired `OrderModule`.
+- Model: `plantId, customerId, agentId, orderQuantity, totalPrice, deliveryAddress, deliveryCity?, installationDate, orderStatus`.
+- **Server-derived trust boundary:** `OrderInput` accepts only `plantId, orderQuantity?, deliveryAddress, deliveryCity?, installationDate`. `customerId` (auth), `agentId` (from plant), `totalPrice` (plant.plantPrice × qty), `orderStatus` (PENDING) are all set server-side — never from the client.
+- **State machine** (`OrderService.LEGAL_TRANSITIONS` + role rules): PENDING→CONFIRMED→IN_TRANSIT→INSTALLED; CANCELLED from PENDING/CONFIRMED/IN_TRANSIT; INSTALLED/CANCELLED terminal. Advancing = AGENT(owner)/ADMIN; CLIENT(owner) may only cancel from PENDING/CONFIRMED.
+- **Ownership** enforced on every read/write (`assertCanAccess` / `assertCanTransition`).
+- Delivery: `deliveryAddress` (+ optional `deliveryCity`) is the customer destination, deliberately separate from the plant's `supplyLocation`. **No geo distance check is performed** — data is modeled so `plant.supplyLocation` + `plant.deliveryRadius` vs `deliveryCity` can drive a real check later (documented, not faked).
+- **Verified (real GraphQL + Oasis DB):** all create/state-machine/ownership/role/list checks passed; build + `tsc` clean.
+
+### ✅ Phase 6 — Order↔Plant↔Agent integration (done — verification only)
+- No code changes. Focused integration/edge verification against the real Oasis DB:
+  - order vs non-existent plant → NO_DATA_FOUND; order vs SOLD_OUT plant → NO_DATA_FOUND (only ACTIVE plants orderable).
+  - full business flow discover→view→order→CONFIRMED→IN_TRANSIT→INSTALLED.
+  - **cross-agent isolation** proven with a real 2nd agent (promoted by ADMIN): agent B cannot touch agent A's order; agent B's `getAgentOrders` is empty; agent A sees only their own.
+  - agent onboarding via `updateMemberByAdmin` (the Phase-2 fix path) confirmed.
+
+### ✅ Phase 7 — Batch (done)
+- Code was already migrated in Phase 3 (Plant/PlantStatus, `batchTopPlants`, `memberPlants`, cron bugs fixed). This phase **ran the real `BatchService`** (via a throwaway Nest application-context harness, since removed) against the Oasis DB.
+- **Verified formulas:** plants `rank = plantLikes*2 + plantViews*1` (Maple 1,1→3; Pine 0,1→1; Palm 0,0→0 — all exact); agents `rank = memberPlants*4 + memberArticles*3 + memberLikes*2 + memberViews*1` (agt193349 4,0,1,2→20 — exact). `batchRollback` zeroes ranks first.
+- **Cron wiring confirmed:** rollback 01:00:00 → top-plants 01:00:20 → top-agents 01:00:30, each handler calling its own service method (the two Nestar copy-paste bugs stay fixed).
+
+### ✅ Phase 8 — Security & validation hardening (done)
+Audited auth/authorization/ownership/validation/upload/logging/secrets. Fixed:
+- **Password hash no longer in JWT:** `createToken` now `delete payload.memberPassword` before signing (was base64-readable in every token). Verified token payload has no `memberPassword`.
+- **No secrets in logs:** removed `console.log` of bearer token (auth.guard), full member/response incl. hash (auth.service, member.service login), and signup/login inputs incl. plaintext password (member.resolver); trimmed the raw error dump in `app.module` formatError (+ safer optional chaining).
+- **Upload path-traversal blocked:** new `validImageTargets = [member, plant, article]` + `isValidTarget`; both `imageUploader`/`imagesUploader` reject any other `target` (verified `../../evil` → rejected, nothing escaped; `plant` → written under `uploads/plant/`). Apollo CSRF-preflight guard on multipart is already active.
+Prior fixes carried in: role-escalation (P2), ownership on plants/orders (P3/P5), server-derived order fields (P5).
+- **Noted, not changed (with reason):** `ValidationPipe({whitelist:true})` deliberately NOT enabled — range/search sub-inputs (`PricesRange`, `HeightsRange`, …) have `@Field` but no class-validator decorators, so whitelisting would silently drop filter values; needs decorators added first. `CORS origin:true` is permissive (restrict per-env for prod). Weak `SECRET_TOKEN` + live Atlas creds in `.env` — **rotate** (can't do it for you). comment/like/view don't verify the target ref exists (low severity, orphan stats only). `isValidImage` uses mime-OR-ext (could tighten to AND).
+
+### ✅ Phase 9 — Testing & regression (done)
+- Replaced dead default scaffolds with a real, runnable jest suite (**26 tests, 4 suites, all green**):
+  - `order.service.spec.ts` (15) — createOrder server-derives agentId/totalPrice + rejects missing plant / past date; full state machine (legal advances, illegal jumps/skips, terminal INSTALLED); role rules (client can't advance, client cancel only PENDING/CONFIRMED, admin cancel from IN_TRANSIT); ownership (stranger blocked on read/write).
+  - `like.service.spec.ts` — toggle returns +1 (create) / −1 (delete); `checkLikeExistence`.
+  - `config.spec.ts` — `isValidTarget` (path-traversal guard), `isValidImage`, `shapeIntoMongoObjectId`.
+  - `app.controller.spec.ts` — fixed to the Oasis welcome string.
+- Removed broken DI-less `member.resolver.spec.ts`. Added `test/uuid.stub.js` + jest `moduleNameMapper` for the ESM-only `uuid` (so importing `config.ts` works under jest).
+- Gates: `jest` 26/26 ✅, `tsc --noEmit` 0 ✅, `nest build` (both) ✅. Live GraphQL flows already covered per-phase (P2–P8).
+- ⚠️ **`npm run lint` is pre-existing-broken**: `eslint.config.mjs` imports the `typescript-eslint` meta package which isn't in devDependencies (only `@typescript-eslint/parser` + `eslint-plugin` are). Not caused by this migration. Fix needs either installing `typescript-eslint` or rewriting the flat config — deferred (dep install) pending your OK.
+
+### ➕ Feature — Accessory domain (new component, done)
+Gardening accessories sold alongside plants (pots, watering cans, compost, fertilizer, tools…), built to full parity with Plant.
+- New: `accessory.enum.ts` (AccessoryType 11, AccessoryCategory 7, AccessoryStatus; reuses `PlantLocation` for `supplyLocation`), `Accessory.model.ts` (collection `accessories`, 2 indexes), flattened DTOs `libs/dto/accessory/{accessory,accessory.input,accessory.update}.ts`, `components/accessory/{service,resolver,module}.ts`.
+- Fields: `accessoryType` + `accessoryCategory` (distinct axes), `accessoryTitle/Price/Brand?/Images/Desc?`, `supplyLocation` + `deliveryRadius`, `accessoryViews/Likes/Comments/Rank`, `memberId` (agent).
+- API: `createAccessory` (AGENT), `getAccessory`, `getAccessories` (search type/category/location/price/text + `$facet` pagination + `meLiked`), `updateAccessory` (AGENT, ownership), `getAgentAccessories`, `likeTargetAccessory`, `getFavoriteAccessories`, `getVisitedAccessories`, admin get-all/update/remove. Query names are accessory-specific to avoid GraphQL collisions with plant's generic `getFavorites`/`getVisited`.
+- Social: `ACCESSORY` added to Like/View/Comment/Notification groups; `like.service.getFavoriteAccessories`, `view.service.getVisitedAccessories`, `comment.service` ACCESSORY case (`accessoryComments`); config `availableAccessorySorts` + favorite/visit lookups. Reused `PricesRange`/`PeriodsRange`/`OrdinaryInquiry` from plant DTO (no duplicate GraphQL types).
+- Member: new `memberAccessories` stat (schema + DTO), incremented on create / decremented on sold-out/delete. (Left OUT of the batch agent-rank formula to keep Phase-7 verification valid — can be added later.)
+- **Verified (real GraphQL + Oasis DB):** create (AGENT-only), search/filter, view, like, ACCESSORY comment, favorites, `memberAccessories` stat — all pass; schema builds; `tsc`/`jest` green.
+- **Not integrated into Order** (Order still references `plantId` only). If you want accessories to be orderable, that's a follow-up (Order needs an item-type or a separate `accessoryId`).
+
+### ✅ Phase 10 — Production cleanup (done)
+- Removed dead code: `Notice.model`, `Notification.model`, `notice.enum`, `notification.enum` (never wired to any module), and the empty `common.enum.ts`.
+- Removed unused imports: `Errors.ts` stray `import {register} from 'module'`, `view.module` `Mongoose`, `member.input` lowercase `min`.
+- Rewrote `README.md` to document **Oasis** (was the stock NestJS starter): domain, roles, products, order state machine, supply-vs-delivery, apps/ports, setup, run, test, conventions.
+- **Consistency sweep (repo-wide):** `nestar` 0 · `MemberType.USER` 0 · Notice/Notification files 0 · `property` 1 (an intentional negative test string `isValidTarget('property')`).
+- Gates: `nest build` (both) ✅ · `tsc --noEmit` 0 ✅ · `jest` 26/26 ✅.
+
+**Remaining optional items (not done — need your call):**
+- **Flatten social DTOs** (`dto/member/{like,follow,comment,view,board-article}` → `dto/*`) to match plant/order/accessory. Deferred: large, purely-cosmetic path churn across many files touching working code; recommend a dedicated pass if wanted.
+- **Fix `npm run lint`** (pre-existing broken — missing `typescript-eslint` dep). Needs a dep install or flat-config rewrite.
+- Rotate the live Atlas credentials + weak `SECRET_TOKEN` in `.env`.
+- Optionally: add accessories to Order (orderable), add `memberAccessories` to the batch agent-rank formula, restrict CORS for prod.
+
+---
+
+## 🔧 Post-build refinements (user-requested)
+- **`plantTitle → plantName`** and **`accessoryTitle → accessoryName`** (schema, DTOs, service text-search + unique index). Dev DB may hold old docs with the old field — clear/re-seed or run a rename migration.
+- **Upload target allowlist** now includes `accessory` (`validImageTargets = [member, plant, accessory, article]`) so accessory images can be uploaded.
+- **Order status split** (clearer roles):
+  - `updateOrderStatus` → **RolesGuard(AGENT, ADMIN)**, advance-only (CONFIRMED/IN_TRANSIT/INSTALLED); rejects `CANCELLED` and non-owned orders.
+  - new **`cancelOrder(orderId)`** → AuthGuard: owning CLIENT may cancel from PENDING/CONFIRMED; owning AGENT / ADMIN from PENDING/CONFIRMED/IN_TRANSIT.
+  - `getAgentOrders` kept (agent's incoming-orders dashboard — essential). Verified via real GraphQL; order unit tests updated (30/30 green).
+
+## 🛒 Order → cart redesign (Order + OrderItem)
+Reworked Order into a **multi-item, multi-agent cart** so one order can contain several products (plants + accessories) from different agents.
+- New `schema/OrderItem.model.ts` (collection `orderitems`); `Order` is now a header (customerId, deliveryAddress, deliveryCity, orderTotal). Enum `OrderItemType` (PLANT|ACCESSORY).
+- DTOs: `order.ts` (header + `items[]`), new `order-item.ts` (line + plant/accessory/agent joins), `order.input.ts` (`OrderInput` with `items[]`, `OrderItemInput`, `AgentItemsInquiry`), `order.update.ts` (`OrderItemStatusUpdate`).
+- Per-item fulfilment: `createOrder` (CLIENT, cart), `getMyOrders`, `getOrder` (owner/admin), `getAgentItems` (agent's line queue), `updateOrderItemStatus` (AGENT owner/ADMIN advance), `cancelOrderItem` (owner client PENDING/CONFIRMED; owner agent/admin further), `getAllOrdersByAdmin`. Agent/price/totals all derived server-side; customerId+delivery denormalized onto items.
+- **Verified (real GraphQL):** one order with plant(agentA)+accessory(agentB), per-agent isolation, advance vs cancel, mixed item statuses. tsc/jest green (26).
+- Two issues found + fixed during verification: duplicate GraphQL type `AISearch` (renamed → `AgentItemSearch`); and a **DB migration** — dropped stale `plantTitle`/`accessoryTitle` unique indexes + `$rename`d the fields in old docs (see `scratchpad/migrate_rename.js`); also re-seeded `adm193349` as ADMIN.
+
+## 🎉 PROJECT COMPLETE — Architectural consistency check (§50)
+**Nestar DNA retained:** monorepo + app separation, resolver/service/module pattern, code-first GraphQL, `$facet` pagination, `lookupAuthMemberLiked/Followed` (no N+1), `memberStatsEditor`, guard trio (`Auth`/`Without`/`Roles`) + `@Roles`/`@AuthMember`, batch app.
+**Oasis domain implemented:** `CLIENT/AGENT/ADMIN`; `Plant` (type+category, supplyLocation, deliveryRadius, height/potSize); `Accessory` (new); `Order` (state machine, ownership, server-derived trust); `Like/Follow/Comment/View` on plants+accessories+agents+articles. Security hardened (no role self-escalation, no password in JWT, no secret logging, upload allowlist). Real GraphQL verified each phase; 26 unit tests green.
 
 ---
 
