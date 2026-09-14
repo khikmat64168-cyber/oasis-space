@@ -131,6 +131,7 @@ Reworked Order into a **multi-item, multi-agent cart** so one order can contain 
 - Per-item fulfilment: `createOrder` (CLIENT, cart), `getMyOrders`, `getOrder` (owner/admin), `getAgentItems` (agent's line queue), `updateOrderItemStatus` (AGENT owner/ADMIN advance), `cancelOrderItem` (owner client PENDING/CONFIRMED; owner agent/admin further), `getAllOrdersByAdmin`. Agent/price/totals all derived server-side; customerId+delivery denormalized onto items.
 - **Verified (real GraphQL):** one order with plant(agentA)+accessory(agentB), per-agent isolation, advance vs cancel, mixed item statuses. tsc/jest green (26).
 - Two issues found + fixed during verification: duplicate GraphQL type `AISearch` (renamed → `AgentItemSearch`); and a **DB migration** — dropped stale `plantTitle`/`accessoryTitle` unique indexes + `$rename`d the fields in old docs (see `scratchpad/migrate_rename.js`); also re-seeded `adm193349` as ADMIN.
+- **Whole-order cancel added:** `cancelOrder(orderId)` (AuthGuard) — owning CLIENT cancels all its PENDING/CONFIRMED lines at once; ADMIN also IN_TRANSIT; installed/cancelled lines untouched. Per-item `cancelOrderItem` still available. Verified (non-owner FORBIDDEN; owner → all lines CANCELLED). jest 29.
 
 ## 🎉 PROJECT COMPLETE — Architectural consistency check (§50)
 **Nestar DNA retained:** monorepo + app separation, resolver/service/module pattern, code-first GraphQL, `$facet` pagination, `lookupAuthMemberLiked/Followed` (no N+1), `memberStatsEditor`, guard trio (`Auth`/`Without`/`Roles`) + `@Roles`/`@AuthMember`, batch app.
