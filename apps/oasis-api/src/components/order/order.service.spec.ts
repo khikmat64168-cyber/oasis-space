@@ -32,6 +32,7 @@ function build({ order, item, plant, accessory }: any = {}) {
 		insertMany: jest.fn().mockResolvedValue([]),
 		findById: jest.fn().mockReturnValue({ exec: () => Promise.resolve(item) }),
 		findByIdAndUpdate: jest.fn().mockReturnValue({ exec: () => Promise.resolve(item) }),
+		updateMany: jest.fn().mockReturnValue({ exec: () => Promise.resolve({ modifiedCount: 1 }) }),
 		aggregate: jest.fn().mockReturnValue({ exec: () => Promise.resolve([item ?? { _id: ITEM_ID }]) }),
 	};
 	const plantModel: any = { findOne: jest.fn().mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(plant) }) }) };
@@ -160,6 +161,33 @@ describe('OrderService.cancelOrderItem', () => {
 		const { svc } = build({ item: makeItem({ itemStatus: OrderStatus.INSTALLED }) });
 		await expect(svc.cancelOrderItem('admin1' as any, MemberType.ADMIN, ITEM_ID as any)).rejects.toThrow(
 			Message.INVALID_ORDER_TRANSITION,
+		);
+	});
+});
+
+describe('OrderService.cancelOrder — whole order', () => {
+	it('owning client cancels all PENDING/CONFIRMED lines (not shipped ones)', async () => {
+		const { svc, orderItemModel } = build({ order: { _id: ORDER_ID, customerId: CUSTOMER } });
+		await svc.cancelOrder(CUSTOMER as any, MemberType.CLIENT, ORDER_ID as any);
+		expect(orderItemModel.updateMany).toHaveBeenCalledWith(
+			{ orderId: ORDER_ID, itemStatus: { $in: [OrderStatus.PENDING, OrderStatus.CONFIRMED] } },
+			{ itemStatus: OrderStatus.CANCELLED },
+		);
+	});
+
+	it('admin can also cancel IN_TRANSIT lines', async () => {
+		const { svc, orderItemModel } = build({ order: { _id: ORDER_ID, customerId: CUSTOMER } });
+		await svc.cancelOrder('admin1' as any, MemberType.ADMIN, ORDER_ID as any);
+		expect(orderItemModel.updateMany).toHaveBeenCalledWith(
+			{ orderId: ORDER_ID, itemStatus: { $in: [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.IN_TRANSIT] } },
+			{ itemStatus: OrderStatus.CANCELLED },
+		);
+	});
+
+	it('forbids a non-owner client', async () => {
+		const { svc } = build({ order: { _id: ORDER_ID, customerId: CUSTOMER } });
+		await expect(svc.cancelOrder(OTHER as any, MemberType.CLIENT, ORDER_ID as any)).rejects.toThrow(
+			Message.NOT_YOUR_ORDER,
 		);
 	});
 });

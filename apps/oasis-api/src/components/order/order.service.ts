@@ -203,6 +203,29 @@ export class OrderService {
 		return this.fetchOneItem(itemId);
 	}
 
+	// Cancel a WHOLE order at once. The owning CLIENT cancels every still-cancellable
+	// line it placed (PENDING/CONFIRMED); an ADMIN can also cancel IN_TRANSIT lines.
+	// Already INSTALLED/CANCELLED lines are left untouched. (Agents cancel their own
+	// lines individually via cancelOrderItem.)
+	public async cancelOrder(authMemberId: ObjectId, authMemberType: MemberType, orderId: ObjectId): Promise<Order> {
+		const order = await this.orderModel.findById(orderId).exec();
+		if (!order) throw new InternalServerErrorException(Message.NO_DATA_FOUND);
+
+		const isAdmin = authMemberType === MemberType.ADMIN;
+		const isOwner = order.customerId.toString() === authMemberId.toString();
+		if (!isAdmin && !isOwner) throw new ForbiddenException(Message.NOT_YOUR_ORDER);
+
+		const cancellableFrom = isAdmin
+			? [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.IN_TRANSIT]
+			: [OrderStatus.PENDING, OrderStatus.CONFIRMED];
+
+		await this.orderItemModel
+			.updateMany({ orderId: order._id, itemStatus: { $in: cancellableFrom } }, { itemStatus: OrderStatus.CANCELLED })
+			.exec();
+
+		return this.fetchOneOrder(order._id);
+	}
+
 	// ---- helpers ----
 
 	private async listOrders(match: T, input: OrdersInquiry): Promise<Orders> {

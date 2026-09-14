@@ -85,6 +85,15 @@ export class OrderResolver {
 		return await this.orderService.cancelOrderItem(authMember._id, authMember.memberType, itemId);
 	}
 
+	// Cancel the WHOLE order at once — owning CLIENT / ADMIN.
+	@UseGuards(AuthGuard)
+	@Mutation(() => Order)
+	public async cancelOrder(@Args('orderId') input: string, @AuthMember() authMember: Member): Promise<Order> {
+		console.log('Mutation: cancelOrder');
+		const orderId = shapeIntoMongoObjectId(input);
+		return await this.orderService.cancelOrder(authMember._id, authMember.memberType, orderId);
+	}
+
 	/** ADMIN **/
 
 	@Roles(MemberType.ADMIN)
