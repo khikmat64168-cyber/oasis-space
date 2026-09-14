@@ -5,9 +5,10 @@ import { View } from '../../libs/dto/member/view/view';
 import { ViewInput } from '../../libs/dto/member/view/view.input';
 import { T } from '../../libs/types/common';
 import { Plants } from '../../libs/dto/plant/plant';
+import { Accessories } from '../../libs/dto/accessory/accessory';
 import { OrdinaryInquiry } from '../../libs/dto/plant/plant.input';
 import { ViewGroup } from '../../libs/enums/view.enum';
-import { lookupVisit } from '../../libs/config';
+import { lookupVisit, lookupVisitAccessory } from '../../libs/config';
 
 @Injectable()
 export class ViewService {
@@ -63,6 +64,43 @@ export class ViewService {
 
 		const result: Plants = { list: [], metaCounter: data[0].metaCounter };
 		result.list = data[0].list.map((ele) => ele.visitedPlant);
+
+		return result;
+	}
+
+	public async getVisitedAccessories(memberId: ObjectId, input: OrdinaryInquiry): Promise<Accessories> {
+		const { page, limit } = input;
+		const match: T = { viewGroup: ViewGroup.ACCESSORY, memberId: memberId };
+
+		const data: T = await this.viewModel
+			.aggregate([
+				{ $match: match },
+				{ $sort: { updatedAt: -1 } },
+				{
+					$lookup: {
+						from: 'accessories',
+						localField: 'viewRefId',
+						foreignField: '_id',
+						as: 'visitedAccessory',
+					},
+				},
+				{ $unwind: '$visitedAccessory' },
+				{
+					$facet: {
+						list: [
+							{ $skip: (page - 1) * limit },
+							{ $limit: limit },
+							lookupVisitAccessory,
+							{ $unwind: '$visitedAccessory.memberData' },
+						],
+						metaCounter: [{ $count: 'total' }],
+					},
+				},
+			])
+			.exec();
+
+		const result: Accessories = { list: [], metaCounter: data[0].metaCounter };
+		result.list = data[0].list.map((ele) => ele.visitedAccessory);
 
 		return result;
 	}

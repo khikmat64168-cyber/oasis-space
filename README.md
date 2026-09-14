@@ -1,98 +1,137 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Oasis
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+**Oasis** is a plant marketplace, delivery, and installation platform. Nurseries and plant
+sellers (**agents**) list mature plants, trees, flowers and shrubs — plus the gardening
+**accessories** sold alongside them (pots, watering cans, compost, fertilizer, tools) —
+and customers (**clients**) discover, like, comment on, follow, and order them for delivery
+and on-site installation.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Built on the proven architecture of a NestJS + GraphQL + MongoDB monorepo.
 
-## Description
+## Core flow
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+DISCOVER → VIEW PLANT → ORDER → AGENT CONFIRMS → DELIVERY → INSTALLATION → COMPLETED
 ```
 
-## Compile and run the project
+## Tech stack
 
-```bash
-# development
-$ npm run start
+- **NestJS 10** (monorepo)
+- **GraphQL** code-first via **Apollo Server 4** (`autoSchemaFile`, playground on)
+- **MongoDB** + **Mongoose 8**
+- **JWT** auth (`@nestjs/jwt`) + **bcryptjs**
+- **graphql-upload** for images
+- **@nestjs/schedule** for batch ranking jobs
 
-# watch mode
-$ npm run start:dev
+## Applications
 
-# production mode
-$ npm run start:prod
+| App | Port | Role |
+|-----|------|------|
+| `apps/oasis-api` | **3013** | GraphQL API — auth, catalog, orders, social |
+| `apps/oasis-batch` | **3014** | Scheduled ranking jobs (top plants / top agents) |
+
+GraphQL endpoint & playground: `http://localhost:3013/graphql`
+
+## Domain modules (`apps/oasis-api/src/components`)
+
+`auth` · `member` · `plant` · `accessory` · `order` · `like` · `follow` · `comment` · `view` · `board-article`
+
+### Member roles (`MemberType`)
+
+- **CLIENT** — browse, search, like, comment, follow agents, place & track orders
+- **AGENT** — create/manage plant & accessory listings, fulfil orders (confirm → in-transit → installed)
+- **ADMIN** — manage members, listings, orders, and content
+
+> Public sign-up always creates a **CLIENT**. `AGENT`/`ADMIN` are assigned only by an admin
+> via `updateMemberByAdmin` — roles can never be self-selected.
+
+### Products
+
+- **Plant** — `plantType` (form: TREE, FLOWER, SHRUB, FRUIT_TREE, …) + `plantCategory`
+  (classification: EVERGREEN, FLOWERING, EDIBLE, …), `plantHeight`, `potSize`.
+- **Accessory** — `accessoryType` (POT, WATERING_CAN, COMPOST, FERTILIZER, …) + `accessoryCategory`.
+
+Both carry a **`supplyLocation`** (the Korean city the item ships *from*) and an optional
+**`deliveryRadius`** (km). This is deliberately distinct from an order's **`deliveryAddress`**
+(where the *customer* wants it delivered). No geographic distance check is performed yet — the
+data is modeled so one can be added later.
+
+### Orders
+
+`Order` links a client, a plant, and the plant's agent. Trusted fields are always derived
+server-side: `customerId` (from the JWT), `agentId` (from the plant), `totalPrice`
+(`plantPrice × quantity`). Status follows an enforced state machine:
+
+```
+PENDING → CONFIRMED → IN_TRANSIT → INSTALLED
+   └─────────┴────────────┴──────────► CANCELLED
 ```
 
-## Run tests
+- Agents/admins advance fulfilment; clients may cancel only while `PENDING`/`CONFIRMED`.
+- `INSTALLED` and `CANCELLED` are terminal. Ownership is checked on every read/write.
+
+## Getting started
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
 ```
 
-## Deployment
+Create a `.env` in the repo root (it is git-ignored — never commit real secrets):
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+```
+PORT_API=3013
+PORT_BATCH=3014
+MONGO_DEV=mongodb+srv://<user>:<pass>@<cluster>/Oasis
+MONGO_PROD=mongodb+srv://<user>:<pass>@<cluster>/Oasis
+SECRET_TOKEN=<a-strong-random-secret>
+```
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Run
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# API (dev, watch) — http://localhost:3013/graphql
+npm run start:dev
+
+# Batch (dev, watch)
+npm run start:dev:batch
+
+# production
+npm run build
+npm run start:prod
+npm run start:prod:batch
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Test
 
-## Resources
+```bash
+npm test          # jest unit tests
+npm run test:cov  # coverage
+npx tsc --noEmit  # type-check
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+## Project layout
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```
+apps/
+├── oasis-api/
+│   └── src/
+│       ├── components/   # auth, member, plant, accessory, order, like, follow, comment, view, board-article
+│       ├── libs/
+│       │   ├── dto/      # graphql types & inputs (plant, accessory, order flat; member holds social dtos)
+│       │   ├── enums/    # member, plant, accessory, order, like, view, comment, board-article
+│       │   ├── config.ts # aggregation helpers, upload guards, sort whitelists
+│       │   └── Errors.ts # HttpCode / Message / Direction
+│       ├── schema/       # Mongoose models
+│       └── socket/       # websocket gateway (reserved for future live order status)
+└── oasis-batch/          # cron ranking jobs
+```
 
-## Support
+## Conventions
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- **Listing queries** use a single `$match → $sort → $facet{ list, metaCounter }` aggregation
+  (one round-trip for page + total). Personalized `meLiked`/`meFollowed` come from `$lookup`
+  sub-pipelines — no N+1.
+- **Guards:** `AuthGuard` (token required), `WithoutGuard` (optional — personalizes if present),
+  `RolesGuard` + `@Roles(MemberType.X)`. Current member via `@AuthMember()`.
+- **Member statistics** (`memberPlants`, `memberAccessories`, `memberLikes`, `memberFollowers`, …)
+  are updated through a single `memberStatsEditor`.

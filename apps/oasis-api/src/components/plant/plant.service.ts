@@ -148,7 +148,7 @@ export class PlantService {
 		if (heightsRange) match.plantHeight = { $gte: heightsRange.start, $lte: heightsRange.end };
 		if (periodsRange) match.createdAt = { $gte: periodsRange.start, $lte: periodsRange.end };
 
-		if (text) match.plantTitle = { $regex: new RegExp(text, 'i') };
+		if (text) match.plantName = { $regex: new RegExp(text, 'i') };
 	}
 
 	public async getFavorites(memberId: ObjectId, input: OrdinaryInquiry): Promise<Plants> {

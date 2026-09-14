@@ -33,7 +33,7 @@ const PlantSchema = new Schema(
 			required: true,
 		},
 
-		plantTitle: {
+		plantName: {
 			type: String,
 			required: true,
 		},
@@ -108,7 +108,7 @@ const PlantSchema = new Schema(
 );
 
 // A given agent should not list the exact same plant twice at the same price.
-PlantSchema.index({ memberId: 1, plantTitle: 1, plantType: 1, plantPrice: 1 }, { unique: true });
+PlantSchema.index({ memberId: 1, plantName: 1, plantType: 1, plantPrice: 1 }, { unique: true });
 // Common discovery filters.
 PlantSchema.index({ plantType: 1, plantCategory: 1, supplyLocation: 1, plantStatus: 1 });
 

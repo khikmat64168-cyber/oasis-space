@@ -27,7 +27,7 @@ export class PlantInput {
 	@IsNotEmpty()
 	@Length(3, 100)
 	@Field(() => String)
-	plantTitle!: string;
+	plantName!: string;
 
 	@IsNotEmpty()
 	@Field(() => Number)

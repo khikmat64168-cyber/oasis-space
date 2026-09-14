@@ -18,9 +18,8 @@ import { SocketModule } from './socket/socket.module';
 			playground: true,
 			autoSchemaFile: true,
 			formatError: (error: T) => {
-				console.log('error:', error);
 				const graphQLForrmatedError = {
-					code: error?.extensions.code,
+					code: error?.extensions?.code,
 					message:
 						error?.extensions?.exception?.response?.message || error?.extensions?.response?.message || error?.message,
 				};

@@ -18,12 +18,12 @@ export class AuthService {
 	}
 
 	public async createToken(member: Member): Promise<string> {
-		console.log('member:', member);
-
 		const payload: T = {};
 		Object.keys(member['_doc'] ? member['_doc'] : member).map((ele) => {
 			payload[`${ele}`] = member[`${ele}`];
 		});
+		// SECURITY: never embed the password hash in the JWT (it is base64-readable by any token holder)
+		delete payload.memberPassword;
 		return await this.jwtService.signAsync(payload);
 	}
 

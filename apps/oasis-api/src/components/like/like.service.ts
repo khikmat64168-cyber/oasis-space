@@ -6,9 +6,10 @@ import { LikeInput } from '../../libs/dto/member/like/like.input';
 import { Message } from '../../libs/Errors';
 import { T } from '../../libs/types/common';
 import { Plants } from '../../libs/dto/plant/plant';
+import { Accessories } from '../../libs/dto/accessory/accessory';
 import { OrdinaryInquiry } from '../../libs/dto/plant/plant.input';
 import { LikeGroup } from '../../libs/enums/like.enum';
-import { lookupFavorite } from '../../libs/config';
+import { lookupFavorite, lookupFavoriteAccessory } from '../../libs/config';
 
 @Injectable()
 export class LikeService {
@@ -74,6 +75,43 @@ export class LikeService {
 
 		const result: Plants = { list: [], metaCounter: data[0].metaCounter };
 		result.list = data[0].list.map((ele) => ele.favoritePlant);
+
+		return result;
+	}
+
+	public async getFavoriteAccessories(memberId: ObjectId, input: OrdinaryInquiry): Promise<Accessories> {
+		const { page, limit } = input;
+		const match: T = { likeGroup: LikeGroup.ACCESSORY, memberId: memberId };
+
+		const data: T = await this.likeModel
+			.aggregate([
+				{ $match: match },
+				{ $sort: { updatedAt: -1 } },
+				{
+					$lookup: {
+						from: 'accessories',
+						localField: 'likeRefId',
+						foreignField: '_id',
+						as: 'favoriteAccessory',
+					},
+				},
+				{ $unwind: '$favoriteAccessory' },
+				{
+					$facet: {
+						list: [
+							{ $skip: (page - 1) * limit },
+							{ $limit: limit },
+							lookupFavoriteAccessory,
+							{ $unwind: '$favoriteAccessory.memberData' },
+						],
+						metaCounter: [{ $count: 'total' }],
+					},
+				},
+			])
+			.exec();
+
+		const result: Accessories = { list: [], metaCounter: data[0].metaCounter };
+		result.list = data[0].list.map((ele) => ele.favoriteAccessory);
 
 		return result;
 	}

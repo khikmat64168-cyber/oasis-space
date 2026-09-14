@@ -6,6 +6,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '../auth/auth.module';
 import { MemberModule } from '../member/member.module';
 import { PlantModule } from '../plant/plant.module';
+import { AccessoryModule } from '../accessory/accessory.module';
 import { BoardArticleModule } from '../board-article/board-article.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { BoardArticleModule } from '../board-article/board-article.module';
 		AuthModule,
 		MemberModule,
 		PlantModule,
+		AccessoryModule,
 		BoardArticleModule,
 	],
 	providers: [CommentResolver, CommentService],

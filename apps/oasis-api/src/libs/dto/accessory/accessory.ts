@@ -1,61 +1,56 @@
 import { Field, Int, ObjectType } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
-import { PlantCategory, PlantLocation, PlantStatus, PlantType } from '../../enums/plant.enum';
+import { AccessoryCategory, AccessoryStatus, AccessoryType } from '../../enums/accessory.enum';
+import { PlantLocation } from '../../enums/plant.enum';
 import { Member, TotalCounter } from '../member/member';
 import { MeLiked } from '../member/like/like';
 
 @ObjectType()
-export class Plant {
+export class Accessory {
 	@Field(() => String)
 	_id!: ObjectId;
 
-	@Field(() => PlantType)
-	plantType!: PlantType;
+	@Field(() => AccessoryType)
+	accessoryType!: AccessoryType;
 
-	@Field(() => PlantCategory)
-	plantCategory!: PlantCategory;
+	@Field(() => AccessoryCategory)
+	accessoryCategory!: AccessoryCategory;
 
-	@Field(() => PlantStatus)
-	plantStatus!: PlantStatus;
+	@Field(() => AccessoryStatus)
+	accessoryStatus!: AccessoryStatus;
+
+	@Field(() => String)
+	accessoryName!: string;
+
+	@Field(() => Number)
+	accessoryPrice!: number;
+
+	@Field(() => String, { nullable: true })
+	accessoryBrand?: string;
+
+	@Field(() => [String])
+	accessoryImages!: string[];
+
+	@Field(() => String, { nullable: true })
+	accessoryDesc?: string;
 
 	@Field(() => PlantLocation)
 	supplyLocation!: PlantLocation;
-
-	@Field(() => String)
-	plantAddress!: string;
-
-	@Field(() => String)
-	plantName!: string;
-
-	@Field(() => Number)
-	plantPrice!: number;
-
-	@Field(() => Number)
-	plantHeight!: number;
-
-	@Field(() => Number, { nullable: true })
-	potSize?: number;
 
 	@Field(() => Number, { nullable: true })
 	deliveryRadius?: number;
 
 	@Field(() => Int)
-	plantViews!: number;
+	accessoryViews!: number;
 
 	@Field(() => Int)
-	plantLikes!: number;
+	accessoryLikes!: number;
 
 	@Field(() => Int)
-	plantComments!: number;
+	accessoryComments!: number;
 
 	@Field(() => Int)
-	plantRank!: number;
-
-	@Field(() => [String])
-	plantImages!: string[];
-
-	@Field(() => String, { nullable: true })
-	plantDesc?: string;
+	accessoryRank!: number;
 
 	@Field(() => String)
 	memberId!: ObjectId;
@@ -82,9 +77,9 @@ export class Plant {
 }
 
 @ObjectType()
-export class Plants {
-	@Field(() => [Plant])
-	list!: Plant[];
+export class Accessories {
+	@Field(() => [Accessory])
+	list!: Accessory[];
 
 	@Field(() => [TotalCounter], { nullable: true })
 	metaCounter!: TotalCounter[];

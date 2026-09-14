@@ -40,6 +40,6 @@ async function bootstrap() {
 	app.useWebSocketAdapter(new WsAdapter(app));
 
 	app.use('/uploads', express.static('./uploads'));
-	await listenWithRetry(app, process.env.PORT_API ?? 3000);
+	await listenWithRetry(app, process.env.PORT_API ?? 3013);
 }
 bootstrap();

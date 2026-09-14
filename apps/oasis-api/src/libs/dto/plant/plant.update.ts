@@ -33,7 +33,7 @@ export class PlantUpdate {
 	@IsOptional()
 	@Length(3, 100)
 	@Field(() => String, { nullable: true })
-	plantTitle?: string;
+	plantName?: string;
 
 	@IsOptional()
 	@Field(() => Number, { nullable: true })

@@ -6,6 +6,7 @@ import { CommentInput, CommentsInquiry } from '../../libs/dto/member/comment/com
 import { Comment, Comments } from '../../libs/dto/member/comment/comment';
 import { MemberService } from '../member/member.service';
 import { PlantService } from '../plant/plant.service';
+import { AccessoryService } from '../accessory/accessory.service';
 import { BoardArticleService } from '../board-article/board-article.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { CommentUpdate } from '../../libs/dto/member/comment/comment.update';
@@ -18,6 +19,7 @@ export class CommentService {
 		@InjectModel('Comment') private readonly commentModel: Model<Comment>,
 		private readonly memberService: MemberService,
 		private readonly plantService: PlantService,
+		private readonly accessoryService: AccessoryService,
 		private readonly boardArticleService: BoardArticleService,
 	) {}
 
@@ -37,6 +39,13 @@ export class CommentService {
 				await this.plantService.plantStatsEditor({
 					_id: input.commentRefId,
 					targetKey: 'plantComments',
+					modifier: 1,
+				});
+				break;
+			case CommentGroup.ACCESSORY:
+				await this.accessoryService.accessoryStatsEditor({
+					_id: input.commentRefId,
+					targetKey: 'accessoryComments',
 					modifier: 1,
 				});
 				break;

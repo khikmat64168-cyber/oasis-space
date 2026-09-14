@@ -9,7 +9,7 @@
 		"build": "nest build",
 		"format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
 		"start": "nest start",
-		"kill:port": "lsof -ti:3008 | xargs kill -9 2>/dev/null || true",
+		"kill:port": "lsof -ti:3013 | xargs kill -9 2>/dev/null || true",
 		"prestart:dev": "npm run kill:port",
 		"start:dev": "cross-env NODE_ENV=development nest start --watch",
 		"start:dev:batch": "cross-env NODE_ENV=development nest start oasis-batch --watch",
@@ -87,6 +87,9 @@
 		"testRegex": ".*\\.spec\\.ts$",
 		"transform": {
 			"^.+\\.(t|j)s$": "ts-jest"
+		},
+		"moduleNameMapper": {
+			"^uuid$": "<rootDir>/apps/oasis-api/test/uuid.stub.js"
 		},
 		"collectCoverageFrom": [
 			"**/*.(t|j)s"

@@ -16,7 +16,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { MemberType } from '../../libs/enums/member.enums';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { MemberUpdate } from '../../libs/dto/member/member.update';
-import { ensureUploadDir, getSerialForImage, isValidImage, shapeIntoMongoObjectId } from '../../libs/config';
+import { ensureUploadDir, getSerialForImage, isValidImage, isValidTarget, shapeIntoMongoObjectId } from '../../libs/config';
 import { WithoutGuard } from '../auth/guards/without.guard';
 
 import { GraphQLUpload, FileUpload } from 'graphql-upload';
@@ -32,7 +32,6 @@ export class MemberResolver {
 	public async signup(@Args('input') input: MemberInput): Promise<Member> {
 		try {
 			console.log('Mutation : signup');
-			console.log('input:', input);
 			return await this.memberService.signup(input);
 		} catch (err) {
 			console.log('Error, signup:', err);
@@ -45,8 +44,6 @@ export class MemberResolver {
 	public async login(@Args('input') input: LoginInput): Promise<Member> {
 		try {
 			console.log('Mutation: login');
-			console.log('input:', input);
-
 			return await this.memberService.login(input);
 		} catch (err) {
 			console.log('Error, login:', err);
@@ -161,6 +158,7 @@ export class MemberResolver {
 		console.log('Mutation: imageUploader');
 
 		if (!filename) throw new Error(Message.UPLOAD_FAILED);
+		if (!isValidTarget(String(target))) throw new Error(Message.NOT_ALLOWED_REQUEST);
 		if (!isValidImage(filename, mimetype)) throw new Error(Message.PROVIDE_ALLOWED_FORMAT);
 
 		const imageName = getSerialForImage(filename);
@@ -187,6 +185,8 @@ export class MemberResolver {
 		@Args('target') target: String,
 	): Promise<string[]> {
 		console.log('Mutation: imagesUploader');
+
+		if (!isValidTarget(String(target))) throw new Error(Message.NOT_ALLOWED_REQUEST);
 
 		const uploadedImages: string[] = [];
 		const promisedList = files.map(async (img: Promise<FileUpload>, index: number): Promise<Promise<void>> => {
