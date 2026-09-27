@@ -29,6 +29,7 @@ export class OrderService {
 	constructor(
 		@InjectModel('Order') private readonly orderModel: Model<Order>,
 		@InjectModel('OrderItem') private readonly orderItemModel: Model<OrderItem>,
+		@InjectModel('OrderItemEvent') private readonly orderItemEventModel: Model<any>,
 		@InjectModel('Plant') private readonly plantModel: Model<Plant>,
 		@InjectModel('Accessory') private readonly accessoryModel: Model<Accessory>,
 	) {}
@@ -43,12 +44,16 @@ export class OrderService {
 			const refId = shapeIntoMongoObjectId(line.refId);
 			let agentId: ObjectId;
 			let unitPrice: number;
+			let stockField: 'plantStock' | 'accessoryStock';
+			let stockOnHand: number;
 
 			if (line.itemType === OrderItemType.PLANT) {
 				const plant = await this.plantModel.findOne({ _id: refId, plantStatus: PlantStatus.ACTIVE }).lean().exec();
 				if (!plant) throw new InternalServerErrorException(Message.NO_DATA_FOUND);
 				agentId = (plant as any).memberId;
 				unitPrice = (plant as any).plantPrice;
+				stockField = 'plantStock';
+				stockOnHand = (plant as any).plantStock ?? 0;
 			} else {
 				const acc = await this.accessoryModel
 					.findOne({ _id: refId, accessoryStatus: AccessoryStatus.ACTIVE })
@@ -57,6 +62,8 @@ export class OrderService {
 				if (!acc) throw new InternalServerErrorException(Message.NO_DATA_FOUND);
 				agentId = (acc as any).memberId;
 				unitPrice = (acc as any).accessoryPrice;
+				stockField = 'accessoryStock';
+				stockOnHand = (acc as any).accessoryStock ?? 0;
 			}
 
 			let installationDate: Date | undefined = undefined;
@@ -69,6 +76,9 @@ export class OrderService {
 			}
 
 			const qty = line.itemQuantity && line.itemQuantity > 0 ? line.itemQuantity : 1;
+			// availability is the agent's real stock, checked before anything is written
+			if (stockOnHand < qty) throw new BadRequestException(Message.INSUFFICIENT_STOCK);
+
 			resolved.push({
 				itemType: line.itemType,
 				refId,
@@ -77,6 +87,7 @@ export class OrderService {
 				unitPrice,
 				itemTotal: unitPrice * qty,
 				installationDate,
+				stockField,
 			});
 		}
 
@@ -91,7 +102,7 @@ export class OrderService {
 				orderTotal: orderTotal,
 			});
 
-			const itemDocs = resolved.map((r) => ({
+			const itemDocs = resolved.map(({ stockField, ...r }) => ({
 				...r,
 				orderId: order._id,
 				customerId: customerId,
@@ -99,7 +110,22 @@ export class OrderService {
 				deliveryCity: input.deliveryCity,
 				itemStatus: OrderStatus.PENDING,
 			}));
-			await this.orderItemModel.insertMany(itemDocs);
+			const created = await this.orderItemModel.insertMany(itemDocs);
+
+			// the units are now committed to this customer, so take them off the
+			// agent's shelf; cancelling a line puts them back
+			await Promise.all(
+				resolved.map((r) =>
+					r.stockField === 'plantStock'
+						? this.plantModel.findByIdAndUpdate(r.refId, { $inc: { plantStock: -r.itemQuantity } }).exec()
+						: this.accessoryModel.findByIdAndUpdate(r.refId, { $inc: { accessoryStock: -r.itemQuantity } }).exec(),
+				),
+			);
+
+			// opening entry of each line's timeline — no actor, the system wrote it
+			await this.recordEvents(
+				created.map((doc: any) => ({ orderItemId: doc._id, orderId: order._id, status: OrderStatus.PENDING })),
+			);
 		} catch (err) {
 			console.log('Error, Service.model:', err);
 			// best-effort rollback of the header if items failed
@@ -171,7 +197,13 @@ export class OrderService {
 			throw new ForbiddenException(Message.NOT_YOUR_ORDER);
 		}
 
-		await this.orderItemModel.findByIdAndUpdate(itemId, { itemStatus: to }, { new: true }).exec();
+		const patch: T = { itemStatus: to };
+		if (input.trackingNumber !== undefined) patch.trackingNumber = input.trackingNumber;
+
+		await this.orderItemModel.findByIdAndUpdate(itemId, patch, { new: true }).exec();
+		await this.recordEvents([
+			{ orderItemId: itemId, orderId: item.orderId, status: to, changedBy: authMemberId },
+		]);
 		return this.fetchOneItem(itemId);
 	}
 
@@ -200,6 +232,10 @@ export class OrderService {
 		}
 
 		await this.orderItemModel.findByIdAndUpdate(itemId, { itemStatus: OrderStatus.CANCELLED }, { new: true }).exec();
+		await this.restoreStock(item);
+		await this.recordEvents([
+			{ orderItemId: itemId, orderId: item.orderId, status: OrderStatus.CANCELLED, changedBy: authMemberId },
+		]);
 		return this.fetchOneItem(itemId);
 	}
 
@@ -219,16 +255,84 @@ export class OrderService {
 			? [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.IN_TRANSIT]
 			: [OrderStatus.PENDING, OrderStatus.CONFIRMED];
 
+		// read the affected lines first: once they are CANCELLED we can no longer
+		// tell which ones this call actually changed
+		const affected = await this.orderItemModel
+			.find({ orderId: order._id, itemStatus: { $in: cancellableFrom } })
+			.exec();
+
 		await this.orderItemModel
 			.updateMany({ orderId: order._id, itemStatus: { $in: cancellableFrom } }, { itemStatus: OrderStatus.CANCELLED })
 			.exec();
+
+		for (const line of affected) await this.restoreStock(line);
+		await this.recordEvents(
+			affected.map((line: any) => ({
+				orderItemId: line._id,
+				orderId: order._id,
+				status: OrderStatus.CANCELLED,
+				changedBy: authMemberId,
+			})),
+		);
 
 		return this.fetchOneOrder(order._id);
 	}
 
 	// ---- helpers ----
 
-	private async listOrders(match: T, input: OrdersInquiry): Promise<Orders> {
+	/**
+	 * Append-only fulfilment timeline. A failure here must never fail the
+	 * transition the customer or agent just made, so it is logged, not thrown.
+	 */
+	private async recordEvents(events: T[]): Promise<void> {
+		if (!events.length) return;
+		try {
+			await this.orderItemEventModel.insertMany(events);
+		} catch (err) {
+			console.log('Error, Service.model (order history):', err);
+		}
+	}
+
+	/** Put a cancelled line's units back on the agent's shelf. */
+	private async restoreStock(item: T): Promise<void> {
+		const qty = item.itemQuantity ?? 0;
+		if (qty <= 0) return;
+		if (item.itemType === OrderItemType.PLANT) {
+			await this.plantModel.findByIdAndUpdate(item.refId, { $inc: { plantStock: qty } }).exec();
+		} else {
+			await this.accessoryModel.findByIdAndUpdate(item.refId, { $inc: { accessoryStock: qty } }).exec();
+		}
+	}
+
+
+	/**
+	 * `baseMatch` carries the caller's ownership scope ({ customerId } for a
+	 * CLIENT, {} for an ADMIN). Search only ever ADDS conditions on top of it,
+	 * so a filter can never widen what the caller is allowed to see.
+	 */
+	private async applySearch(baseMatch: T, input: OrdersInquiry): Promise<T> {
+		const search = input.search;
+		if (!search) return baseMatch;
+		const match: T = { ...baseMatch };
+
+		if (search.deliveryCity) match.deliveryCity = search.deliveryCity;
+		if (search.text) {
+			const escaped = search.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			match.deliveryAddress = { $regex: escaped, $options: 'i' };
+		}
+
+		// status lives on the line items, so resolve the matching orders first —
+		// scoped to the same owner, so a CLIENT still only reaches their own.
+		if (search.itemStatus) {
+			const itemMatch: T = { itemStatus: search.itemStatus };
+			if (baseMatch.customerId) itemMatch.customerId = baseMatch.customerId;
+			match._id = { $in: await this.orderItemModel.distinct('orderId', itemMatch).exec() };
+		}
+		return match;
+	}
+
+	private async listOrders(baseMatch: T, input: OrdersInquiry): Promise<Orders> {
+		const match = await this.applySearch(baseMatch, input);
 		const sort: T = { [input?.sort ?? 'createdAt']: input?.direction ?? Direction.DESC };
 		const result = await this.orderModel
 			.aggregate([
@@ -284,6 +388,17 @@ export class OrderService {
 			{ $unwind: { path: '$accessoryData', preserveNullAndEmptyArrays: true } },
 			{ $lookup: { from: 'members', localField: 'agentId', foreignField: '_id', as: 'agentData' } },
 			{ $unwind: { path: '$agentData', preserveNullAndEmptyArrays: true } },
+			{
+				$lookup: {
+					from: 'orderitemevents',
+					let: { iid: '$_id' },
+					pipeline: [
+						{ $match: { $expr: { $eq: ['$orderItemId', '$$iid'] } } },
+						{ $sort: { createdAt: 1 } },
+					],
+					as: 'history',
+				},
+			},
 		];
 	}
 }

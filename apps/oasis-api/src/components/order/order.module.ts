@@ -4,6 +4,7 @@ import { OrderResolver } from './order.resolver';
 import { OrderService } from './order.service';
 import OrderSchema from '../../schema/Order.model';
 import OrderItemSchema from '../../schema/OrderItem.model';
+import OrderItemEventSchema from '../../schema/OrderItemEvent.model';
 import PlantSchema from '../../schema/Plant.model';
 import AccessorySchema from '../../schema/Accessory.model';
 import { AuthModule } from '../auth/auth.module';
@@ -13,6 +14,7 @@ import { AuthModule } from '../auth/auth.module';
 		MongooseModule.forFeature([
 			{ name: 'Order', schema: OrderSchema },
 			{ name: 'OrderItem', schema: OrderItemSchema },
+			{ name: 'OrderItemEvent', schema: OrderItemEventSchema },
 			{ name: 'Plant', schema: PlantSchema },
 			{ name: 'Accessory', schema: AccessorySchema },
 		]),

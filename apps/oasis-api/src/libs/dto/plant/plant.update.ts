@@ -1,10 +1,16 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
-import { IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
 import { PlantCategory, PlantLocation, PlantStatus, PlantType } from '../../enums/plant.enum';
 import type { ObjectId } from 'mongoose';
 
 @InputType()
 export class PlantUpdate {
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	@Field(() => Int, { nullable: true })
+	plantStock?: number;
+
 	@IsNotEmpty()
 	@Field(() => String)
 	_id!: ObjectId;

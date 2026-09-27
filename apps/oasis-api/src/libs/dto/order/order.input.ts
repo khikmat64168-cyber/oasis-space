@@ -45,6 +45,24 @@ export class OrderInput {
 }
 
 @InputType()
+class OISearch {
+	// matches orders holding at least one line item in this status
+	@IsOptional()
+	@Field(() => OrderStatus, { nullable: true })
+	itemStatus?: OrderStatus;
+
+	@IsOptional()
+	@Field(() => PlantLocation, { nullable: true })
+	deliveryCity?: PlantLocation;
+
+	// free text over the delivery address
+	@IsOptional()
+	@Length(1, 100)
+	@Field(() => String, { nullable: true })
+	text?: string;
+}
+
+@InputType()
 export class OrdersInquiry {
 	@IsNotEmpty()
 	@Min(1)
@@ -64,6 +82,13 @@ export class OrdersInquiry {
 	@IsOptional()
 	@Field(() => Direction, { nullable: true })
 	direction?: Direction;
+
+	// optional: omitting it keeps the previous unfiltered behaviour, so the
+	// CLIENT's getMyOrders and the ADMIN's getAllOrdersByAdmin both still work
+	// exactly as before for callers that send no search object.
+	@IsOptional()
+	@Field(() => OISearch, { nullable: true })
+	search?: OISearch;
 }
 
 @InputType()

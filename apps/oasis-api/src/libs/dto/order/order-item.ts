@@ -7,6 +7,25 @@ import { Plant } from '../plant/plant';
 import { Accessory } from '../accessory/accessory';
 
 @ObjectType()
+export class OrderItemEvent {
+	@Field(() => String)
+	_id!: ObjectId;
+
+	@Field(() => String)
+	orderItemId!: ObjectId;
+
+	@Field(() => OrderStatus)
+	status!: OrderStatus;
+
+	/** null for the system-written PENDING entry */
+	@Field(() => String, { nullable: true })
+	changedBy?: ObjectId;
+
+	@Field(() => Date)
+	createdAt!: Date;
+}
+
+@ObjectType()
 export class OrderItem {
 	@Field(() => String)
 	_id!: ObjectId;
@@ -44,6 +63,10 @@ export class OrderItem {
 	@Field(() => Date, { nullable: true })
 	installationDate?: Date;
 
+	/** carrier reference recorded by the agent when the line ships */
+	@Field(() => String, { nullable: true })
+	trackingNumber?: string;
+
 	@Field(() => OrderStatus)
 	itemStatus!: OrderStatus;
 
@@ -63,6 +86,10 @@ export class OrderItem {
 
 	@Field(() => Member, { nullable: true })
 	agentData?: Member;
+
+	/** append-only fulfilment timeline, oldest first */
+	@Field(() => [OrderItemEvent], { nullable: true })
+	history?: OrderItemEvent[];
 }
 
 @ObjectType()

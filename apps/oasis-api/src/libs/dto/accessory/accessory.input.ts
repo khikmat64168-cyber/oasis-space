@@ -1,5 +1,5 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
-import { IsIn, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
+import { IsIn, IsInt, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
 import type { ObjectId } from 'mongoose';
 import { AccessoryCategory, AccessoryStatus, AccessoryType } from '../../enums/accessory.enum';
 import { PlantLocation } from '../../enums/plant.enum';
@@ -10,6 +10,12 @@ import { PricesRange, PeriodsRange } from '../plant/plant.input';
 
 @InputType()
 export class AccessoryInput {
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	@Field(() => Int, { nullable: true })
+	accessoryStock?: number;
+
 	@IsNotEmpty()
 	@Field(() => AccessoryType)
 	accessoryType!: AccessoryType;

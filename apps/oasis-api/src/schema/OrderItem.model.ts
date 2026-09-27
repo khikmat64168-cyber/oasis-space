@@ -69,6 +69,13 @@ const OrderItemSchema = new Schema(
 			type: Date,
 		},
 
+		// carrier reference the agent records when the line ships; free text
+		// because the platform integrates with no carrier API
+		trackingNumber: {
+			type: String,
+			trim: true,
+		},
+
 		// per-item fulfilment status (each agent advances their own lines)
 		itemStatus: {
 			type: String,

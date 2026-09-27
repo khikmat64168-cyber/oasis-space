@@ -39,6 +39,10 @@ export class Plant {
 	@Field(() => Number, { nullable: true })
 	deliveryRadius?: number;
 
+	/** units the agent currently has on hand */
+	@Field(() => Int)
+	plantStock!: number;
+
 	@Field(() => Int)
 	plantViews!: number;
 

@@ -40,6 +40,10 @@ export class Accessory {
 	@Field(() => Number, { nullable: true })
 	deliveryRadius?: number;
 
+	/** units the agent currently has on hand */
+	@Field(() => Int)
+	accessoryStock!: number;
+
 	@Field(() => Int)
 	accessoryViews!: number;
 

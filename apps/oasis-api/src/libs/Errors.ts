@@ -49,6 +49,7 @@ export enum Message {
 	INVALID_ORDER_TRANSITION = 'This order status transition is not allowed!',
 	INVALID_INSTALLATION_DATE = 'Installation date must be in the future!',
 	NOT_YOUR_ORDER = 'You are not allowed to access or modify this order!',
+	INSUFFICIENT_STOCK = 'Not enough stock available for this product!',
 }
 
 export enum Direction {

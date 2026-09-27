@@ -96,6 +96,15 @@ const PlantSchema = new Schema(
 			ref: 'Member',
 		},
 
+		// How many units this agent currently has on hand. Decremented when an
+		// order line is placed and restored when that line is cancelled, so it is
+		// the single source of truth for availability across the whole platform.
+		plantStock: {
+			type: Number,
+			default: 0,
+			min: 0,
+		},
+
 		soldAt: {
 			type: Date,
 		},

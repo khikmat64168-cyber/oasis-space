@@ -7,6 +7,12 @@ import { availablePlantSorts } from '../../config';
 
 @InputType()
 export class PlantInput {
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	@Field(() => Int, { nullable: true })
+	plantStock?: number;
+
 	@IsNotEmpty()
 	@Field(() => PlantType)
 	plantType!: PlantType;

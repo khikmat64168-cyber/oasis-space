@@ -29,20 +29,29 @@ function build({ order, item, plant, accessory }: any = {}) {
 		aggregate: jest.fn().mockReturnValue({ exec: () => Promise.resolve([order ?? { _id: ORDER_ID, items: [] }]) }),
 	};
 	const orderItemModel: any = {
-		insertMany: jest.fn().mockResolvedValue([]),
+		insertMany: jest.fn().mockResolvedValue([{ _id: ITEM_ID }]),
+		find: jest.fn().mockReturnValue({ exec: () => Promise.resolve(item ? [item] : []) }),
 		findById: jest.fn().mockReturnValue({ exec: () => Promise.resolve(item) }),
 		findByIdAndUpdate: jest.fn().mockReturnValue({ exec: () => Promise.resolve(item) }),
 		updateMany: jest.fn().mockReturnValue({ exec: () => Promise.resolve({ modifiedCount: 1 }) }),
 		aggregate: jest.fn().mockReturnValue({ exec: () => Promise.resolve([item ?? { _id: ITEM_ID }]) }),
 	};
-	const plantModel: any = { findOne: jest.fn().mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(plant) }) }) };
+	const eventModel: any = { insertMany: jest.fn().mockResolvedValue([]) };
+	const plantModel: any = {
+		findOne: jest.fn().mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(plant) }) }),
+		findByIdAndUpdate: jest.fn().mockReturnValue({ exec: () => Promise.resolve(true) }),
+	};
 	const accessoryModel: any = {
 		findOne: jest.fn().mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(accessory) }) }),
+		findByIdAndUpdate: jest.fn().mockReturnValue({ exec: () => Promise.resolve(true) }),
 	};
 	return {
-		svc: new OrderService(orderModel, orderItemModel, plantModel, accessoryModel),
+		svc: new OrderService(orderModel, orderItemModel, eventModel, plantModel, accessoryModel),
 		orderModel,
 		orderItemModel,
+		eventModel,
+		plantModel,
+		accessoryModel,
 	};
 }
 
@@ -50,7 +59,7 @@ describe('OrderService.createOrder — cart', () => {
 	const future = new Date(Date.now() + 7 * 864e5).toISOString();
 
 	it('derives agent, unitPrice, itemTotal + orderTotal from the product; items start PENDING', async () => {
-		const { svc, orderModel, orderItemModel } = build({ plant: { _id: PLANT_ID, memberId: AGENT, plantPrice: 100 } });
+		const { svc, orderModel, orderItemModel } = build({ plant: { _id: PLANT_ID, memberId: AGENT, plantPrice: 100, plantStock: 50 } });
 		const input: any = {
 			deliveryAddress: 'Seoul, Gangnam 1',
 			items: [{ itemType: OrderItemType.PLANT, refId: PLANT_ID, itemQuantity: 2, installationDate: future }],
@@ -64,7 +73,7 @@ describe('OrderService.createOrder — cart', () => {
 	});
 
 	it('supports accessory line items (agent + price from the accessory)', async () => {
-		const { svc, orderItemModel } = build({ accessory: { _id: ACC_ID, memberId: AGENT2, accessoryPrice: 25 } });
+		const { svc, orderItemModel } = build({ accessory: { _id: ACC_ID, memberId: AGENT2, accessoryPrice: 25, accessoryStock: 50 } });
 		const input: any = {
 			deliveryAddress: 'Seoul, Gangnam 1',
 			items: [{ itemType: OrderItemType.ACCESSORY, refId: ACC_ID, itemQuantity: 4 }],
@@ -82,7 +91,7 @@ describe('OrderService.createOrder — cart', () => {
 	});
 
 	it('rejects a past installation date', async () => {
-		const { svc } = build({ plant: { _id: PLANT_ID, memberId: AGENT, plantPrice: 100 } });
+		const { svc } = build({ plant: { _id: PLANT_ID, memberId: AGENT, plantPrice: 100, plantStock: 50 } });
 		const input: any = {
 			deliveryAddress: 'Seoul, Gangnam 1',
 			items: [{ itemType: OrderItemType.PLANT, refId: PLANT_ID, installationDate: '2020-01-01T00:00:00.000Z' }],

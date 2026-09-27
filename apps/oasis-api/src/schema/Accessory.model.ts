@@ -85,6 +85,13 @@ const AccessorySchema = new Schema(
 			ref: 'Member',
 		},
 
+
+		// units on hand — see plantStock in Plant.model.ts
+		accessoryStock: {
+			type: Number,
+			default: 0,
+			min: 0,
+		},
 		soldAt: {
 			type: Date,
 		},

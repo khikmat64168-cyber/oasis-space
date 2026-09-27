@@ -1,11 +1,17 @@
-import { Field, InputType } from '@nestjs/graphql';
-import { IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
+import { Field, InputType, Int } from '@nestjs/graphql';
+import { IsInt, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
 import type { ObjectId } from 'mongoose';
 import { AccessoryCategory, AccessoryStatus, AccessoryType } from '../../enums/accessory.enum';
 import { PlantLocation } from '../../enums/plant.enum';
 
 @InputType()
 export class AccessoryUpdate {
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	@Field(() => Int, { nullable: true })
+	accessoryStock?: number;
+
 	@IsNotEmpty()
 	@Field(() => String)
 	_id!: ObjectId;
