@@ -1,5 +1,6 @@
 import { OrderService } from './order.service';
 import { OrderStatus, OrderItemType } from '../../libs/enums/order.enum';
+import { NotificationType } from '../../libs/enums/notification.enum';
 import { MemberType } from '../../libs/enums/member.enums';
 import { Message } from '../../libs/Errors';
 
@@ -12,6 +13,7 @@ const AGENT = 'agentA';
 const AGENT2 = 'agentB';
 const CUSTOMER = 'customer1';
 const OTHER = 'stranger9';
+const ADMIN = 'admin1';
 
 const makeItem = (over: Partial<any> = {}) => ({
 	_id: ITEM_ID,
@@ -45,8 +47,16 @@ function build({ order, item, plant, accessory }: any = {}) {
 		findOne: jest.fn().mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(accessory) }) }),
 		findByIdAndUpdate: jest.fn().mockReturnValue({ exec: () => Promise.resolve(true) }),
 	};
+	// notifications are a side record of an order: the service records them but
+	// never depends on the result, so a spy is enough to assert who was told.
+	const notificationService: any = {
+		record: jest.fn().mockResolvedValue(undefined),
+		// one admin, matching production; the fan-out is exercised, not stubbed away
+		activeAdminIds: jest.fn().mockResolvedValue([ADMIN]),
+	};
 	return {
-		svc: new OrderService(orderModel, orderItemModel, eventModel, plantModel, accessoryModel),
+		svc: new OrderService(orderModel, orderItemModel, eventModel, plantModel, accessoryModel, notificationService),
+		notificationService,
 		orderModel,
 		orderItemModel,
 		eventModel,
@@ -132,6 +142,166 @@ describe('OrderService.updateOrderItemStatus — advance', () => {
 		await expect(svc.updateOrderItemStatus(AGENT2 as any, MemberType.AGENT, upd(OrderStatus.CONFIRMED))).rejects.toThrow(
 			Message.NOT_YOUR_ORDER,
 		);
+	});
+});
+
+describe('OrderService — notifications', () => {
+	// record() is mocked here, so these assert WHICH drafts the order flow
+	// builds. The rule that a member is never notified of their own action
+	// lives in NotificationService.record and is covered in its own spec.
+	const typesFor = (drafts: any[], receiverId: string) =>
+		drafts.filter((d) => d.receiverId === receiverId).map((d) => d.notificationType);
+
+	it('on a new order tells the customer, the supplying agent and the admin', async () => {
+		const { svc, notificationService } = build({
+			plant: { _id: PLANT_ID, memberId: AGENT, plantPrice: 100, plantStock: 50, plantName: 'Oak 1' },
+		});
+		await svc.createOrder(CUSTOMER as any, {
+			deliveryAddress: 'Seoul, Gangnam 1',
+			items: [{ itemType: OrderItemType.PLANT, refId: PLANT_ID, itemQuantity: 2 }],
+		} as any);
+
+		expect(notificationService.record).toHaveBeenCalledTimes(1);
+		const [drafts] = notificationService.record.mock.calls[0];
+
+		expect(typesFor(drafts, CUSTOMER)).toEqual([NotificationType.ORDER_CREATED]);
+		expect(typesFor(drafts, AGENT)).toEqual([NotificationType.NEW_ORDER]);
+		expect(typesFor(drafts, ADMIN)).toEqual([NotificationType.NEW_ORDER]);
+
+		// the customer's own receipt must carry no sender, or record() would
+		// drop it as a self-notification
+		expect(drafts.find((d: any) => d.receiverId === CUSTOMER).senderId).toBeUndefined();
+		// the agent is told what was ordered, not just that something was
+		expect(drafts.find((d: any) => d.receiverId === AGENT).notificationDesc).toContain('Oak 1');
+	});
+
+	it('writes one notification per agent, not one per line', async () => {
+		const { svc, notificationService } = build({
+			plant: { _id: PLANT_ID, memberId: AGENT, plantPrice: 100, plantStock: 50, plantName: 'Oak 1' },
+		});
+		await svc.createOrder(CUSTOMER as any, {
+			deliveryAddress: 'Seoul, Gangnam 1',
+			items: [
+				{ itemType: OrderItemType.PLANT, refId: PLANT_ID, itemQuantity: 1 },
+				{ itemType: OrderItemType.PLANT, refId: PLANT_ID, itemQuantity: 2 },
+			],
+		} as any);
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, AGENT)).toHaveLength(1);
+	});
+
+	it.each([
+		[OrderStatus.CONFIRMED, NotificationType.ORDER_CONFIRMED],
+		[OrderStatus.IN_TRANSIT, NotificationType.ORDER_IN_TRANSIT],
+		[OrderStatus.INSTALLED, NotificationType.ORDER_INSTALLED],
+	])('maps the %s transition to %s for the customer and the admin', async (to, expected) => {
+		const from = {
+			[OrderStatus.CONFIRMED]: OrderStatus.PENDING,
+			[OrderStatus.IN_TRANSIT]: OrderStatus.CONFIRMED,
+			[OrderStatus.INSTALLED]: OrderStatus.IN_TRANSIT,
+		}[to as string];
+		const { svc, notificationService } = build({
+			item: makeItem({ itemStatus: from, customerId: CUSTOMER, agentId: AGENT }),
+		});
+		await svc.updateOrderItemStatus(AGENT as any, MemberType.AGENT, { itemId: ITEM_ID, orderStatus: to } as any);
+
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, CUSTOMER)).toEqual([expected]);
+		expect(typesFor(drafts, ADMIN)).toEqual([expected]);
+	});
+
+	it('does not tell an agent about a transition the agent made themselves', async () => {
+		const { svc, notificationService } = build({
+			item: makeItem({ itemStatus: OrderStatus.PENDING, customerId: CUSTOMER, agentId: AGENT }),
+		});
+		await svc.updateOrderItemStatus(AGENT as any, MemberType.AGENT, {
+			itemId: ITEM_ID,
+			orderStatus: OrderStatus.CONFIRMED,
+		} as any);
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, AGENT)).toEqual([]);
+	});
+
+	it('tells the agent when an ADMIN moves their line', async () => {
+		const { svc, notificationService } = build({
+			item: makeItem({ itemStatus: OrderStatus.PENDING, customerId: CUSTOMER, agentId: AGENT }),
+		});
+		await svc.updateOrderItemStatus(ADMIN as any, MemberType.ADMIN, {
+			itemId: ITEM_ID,
+			orderStatus: OrderStatus.CONFIRMED,
+		} as any);
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, AGENT)).toEqual([NotificationType.ORDER_DELIVERY_UPDATE]);
+	});
+
+	it('treats an agent cancelling a still-PENDING line as a rejection', async () => {
+		const { svc, notificationService } = build({
+			item: makeItem({ itemStatus: OrderStatus.PENDING, customerId: CUSTOMER, agentId: AGENT }),
+		});
+		await svc.cancelOrderItem(AGENT as any, MemberType.AGENT, ITEM_ID as any);
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, CUSTOMER)).toEqual([NotificationType.ORDER_REJECTED]);
+		expect(typesFor(drafts, ADMIN)).toEqual([NotificationType.ORDER_REJECTED]);
+	});
+
+	it('treats an agent cancelling an accepted line as a cancellation, not a rejection', async () => {
+		const { svc, notificationService } = build({
+			item: makeItem({ itemStatus: OrderStatus.IN_TRANSIT, customerId: CUSTOMER, agentId: AGENT }),
+		});
+		await svc.cancelOrderItem(AGENT as any, MemberType.AGENT, ITEM_ID as any);
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, CUSTOMER)).toEqual([NotificationType.ORDER_CANCELLED]);
+	});
+
+	it('tells the agent, in their own words, when the client cancels', async () => {
+		const { svc, notificationService } = build({
+			item: makeItem({ itemStatus: OrderStatus.PENDING, customerId: CUSTOMER, agentId: AGENT }),
+		});
+		await svc.cancelOrderItem(CUSTOMER as any, MemberType.CLIENT, ITEM_ID as any);
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, AGENT)).toEqual([NotificationType.ORDER_CANCELLED_BY_CLIENT]);
+		expect(typesFor(drafts, ADMIN)).toEqual([NotificationType.ORDER_CANCELLED]);
+		// the one who pressed cancel is not told about it
+		expect(typesFor(drafts, CUSTOMER)).toEqual([]);
+	});
+
+	it('tells both sides when an ADMIN cancels a line', async () => {
+		const { svc, notificationService } = build({
+			item: makeItem({ itemStatus: OrderStatus.CONFIRMED, customerId: CUSTOMER, agentId: AGENT }),
+		});
+		await svc.cancelOrderItem(ADMIN as any, MemberType.ADMIN, ITEM_ID as any);
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, CUSTOMER)).toEqual([NotificationType.ORDER_CANCELLED]);
+		expect(typesFor(drafts, AGENT)).toEqual([NotificationType.ORDER_CANCELLED]);
+	});
+
+	it('cancelling a whole order notifies each agent once, not once per line', async () => {
+		const lines = [
+			{ _id: OID(11), agentId: AGENT, itemStatus: OrderStatus.PENDING },
+			{ _id: OID(12), agentId: AGENT, itemStatus: OrderStatus.PENDING },
+			{ _id: OID(13), agentId: AGENT2, itemStatus: OrderStatus.PENDING },
+		];
+		const { svc, notificationService, orderItemModel } = build({
+			order: { _id: ORDER_ID, customerId: CUSTOMER },
+		});
+		orderItemModel.find = jest.fn().mockReturnValue({ exec: () => Promise.resolve(lines) });
+
+		await svc.cancelOrder(CUSTOMER as any, MemberType.CLIENT, ORDER_ID as any);
+
+		const [drafts] = notificationService.record.mock.calls[0];
+		expect(typesFor(drafts, AGENT)).toEqual([NotificationType.ORDER_CANCELLED_BY_CLIENT]);
+		expect(typesFor(drafts, AGENT2)).toEqual([NotificationType.ORDER_CANCELLED_BY_CLIENT]);
+		expect(typesFor(drafts, ADMIN)).toEqual([NotificationType.ORDER_CANCELLED]);
+		expect(typesFor(drafts, CUSTOMER)).toEqual([]);
+	});
+
+	it('says nothing when cancelling a whole order changed no lines', async () => {
+		const { svc, notificationService, orderItemModel } = build({
+			order: { _id: ORDER_ID, customerId: CUSTOMER },
+		});
+		orderItemModel.find = jest.fn().mockReturnValue({ exec: () => Promise.resolve([]) });
+		await svc.cancelOrder(CUSTOMER as any, MemberType.CLIENT, ORDER_ID as any);
+		expect(notificationService.record).not.toHaveBeenCalled();
 	});
 });
 

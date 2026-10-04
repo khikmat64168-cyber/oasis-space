@@ -43,6 +43,10 @@ export class Plant {
 	@Field(() => Int)
 	plantStock!: number;
 
+	/** how many times this plant has been ordered */
+	@Field(() => Int)
+	plantOrders!: number;
+
 	@Field(() => Int)
 	plantViews!: number;
 

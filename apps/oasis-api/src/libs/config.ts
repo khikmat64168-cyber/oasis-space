@@ -9,6 +9,7 @@ export const availablePlantSorts = [
 	'updatedAt',
 	'plantLikes',
 	'plantViews',
+	'plantOrders',
 	'plantRank',
 	'plantPrice',
 ];

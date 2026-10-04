@@ -99,6 +99,15 @@ const PlantSchema = new Schema(
 		// How many units this agent currently has on hand. Decremented when an
 		// order line is placed and restored when that line is cancelled, so it is
 		// the single source of truth for availability across the whole platform.
+		// How many times this plant has been ordered. Maintained like plantLikes:
+		// incremented when an order line is placed, decremented if that line is
+		// cancelled, so "trending" reflects orders that actually stood.
+		plantOrders: {
+			type: Number,
+			default: 0,
+			min: 0,
+		},
+
 		plantStock: {
 			type: Number,
 			default: 0,

@@ -13,6 +13,8 @@ import { AccessoryStatus } from '../../libs/enums/accessory.enum';
 import { MemberType } from '../../libs/enums/member.enums';
 import { Direction, Message } from '../../libs/Errors';
 import { T } from '../../libs/types/common';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../libs/enums/notification.enum';
 import { shapeIntoMongoObjectId } from '../../libs/config';
 
 // Legal per-item status transitions. INSTALLED and CANCELLED are terminal.
@@ -24,6 +26,29 @@ const LEGAL_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 	[OrderStatus.CANCELLED]: [],
 };
 
+/**
+ * What the client and the admin are told for each forward transition. Keeping
+ * the wording in one table is what stops the three call sites from drifting
+ * into three different vocabularies for the same lifecycle.
+ */
+const ADVANCE_COPY: Partial<Record<OrderStatus, { type: NotificationType; title: string; desc: string }>> = {
+	[OrderStatus.CONFIRMED]: {
+		type: NotificationType.ORDER_CONFIRMED,
+		title: 'Order confirmed',
+		desc: 'The agent accepted this order and is preparing it.',
+	},
+	[OrderStatus.IN_TRANSIT]: {
+		type: NotificationType.ORDER_IN_TRANSIT,
+		title: 'Order on its way',
+		desc: 'This order has left the nursery and is in transit.',
+	},
+	[OrderStatus.INSTALLED]: {
+		type: NotificationType.ORDER_INSTALLED,
+		title: 'Order installed',
+		desc: 'This order has been delivered and installed.',
+	},
+};
+
 @Injectable()
 export class OrderService {
 	constructor(
@@ -32,6 +57,7 @@ export class OrderService {
 		@InjectModel('OrderItemEvent') private readonly orderItemEventModel: Model<any>,
 		@InjectModel('Plant') private readonly plantModel: Model<Plant>,
 		@InjectModel('Accessory') private readonly accessoryModel: Model<Accessory>,
+		private readonly notificationService: NotificationService,
 	) {}
 
 	public async createOrder(customerId: ObjectId, input: OrderInput): Promise<Order> {
@@ -46,6 +72,7 @@ export class OrderService {
 			let unitPrice: number;
 			let stockField: 'plantStock' | 'accessoryStock';
 			let stockOnHand: number;
+			let itemName: string;
 
 			if (line.itemType === OrderItemType.PLANT) {
 				const plant = await this.plantModel.findOne({ _id: refId, plantStatus: PlantStatus.ACTIVE }).lean().exec();
@@ -54,6 +81,7 @@ export class OrderService {
 				unitPrice = (plant as any).plantPrice;
 				stockField = 'plantStock';
 				stockOnHand = (plant as any).plantStock ?? 0;
+				itemName = (plant as any).plantName;
 			} else {
 				const acc = await this.accessoryModel
 					.findOne({ _id: refId, accessoryStatus: AccessoryStatus.ACTIVE })
@@ -64,6 +92,7 @@ export class OrderService {
 				unitPrice = (acc as any).accessoryPrice;
 				stockField = 'accessoryStock';
 				stockOnHand = (acc as any).accessoryStock ?? 0;
+				itemName = (acc as any).accessoryName;
 			}
 
 			let installationDate: Date | undefined = undefined;
@@ -88,6 +117,7 @@ export class OrderService {
 				itemTotal: unitPrice * qty,
 				installationDate,
 				stockField,
+				itemName,
 			});
 		}
 
@@ -102,7 +132,7 @@ export class OrderService {
 				orderTotal: orderTotal,
 			});
 
-			const itemDocs = resolved.map(({ stockField, ...r }) => ({
+			const itemDocs = resolved.map(({ stockField, itemName, ...r }) => ({
 				...r,
 				orderId: order._id,
 				customerId: customerId,
@@ -117,7 +147,10 @@ export class OrderService {
 			await Promise.all(
 				resolved.map((r) =>
 					r.stockField === 'plantStock'
-						? this.plantModel.findByIdAndUpdate(r.refId, { $inc: { plantStock: -r.itemQuantity } }).exec()
+						? this.plantModel
+								// plantOrders counts orders, not units — one line, one order
+								.findByIdAndUpdate(r.refId, { $inc: { plantStock: -r.itemQuantity, plantOrders: 1 } })
+								.exec()
 						: this.accessoryModel.findByIdAndUpdate(r.refId, { $inc: { accessoryStock: -r.itemQuantity } }).exec(),
 				),
 			);
@@ -126,6 +159,49 @@ export class OrderService {
 			await this.recordEvents(
 				created.map((doc: any) => ({ orderItemId: doc._id, orderId: order._id, status: OrderStatus.PENDING })),
 			);
+
+			// One order can span several agents, so group by agent: each supplier
+			// hears once about the lines that are theirs, not once per line.
+			const byAgent = new Map<string, { agentId: ObjectId; names: string[] }>();
+			for (const r of resolved) {
+				const key = String(r.agentId);
+				if (!byAgent.has(key)) byAgent.set(key, { agentId: r.agentId, names: [] });
+				byAgent.get(key)!.names.push(`${r.itemName} x${r.itemQuantity}`);
+			}
+
+			const adminIds = await this.notificationService.activeAdminIds();
+			const summary = `${resolved.length} item${resolved.length === 1 ? '' : 's'} · ₩${orderTotal.toLocaleString(
+				'en-US',
+			)}`;
+
+			await this.notificationService.record([
+				// The customer's own receipt carries NO senderId: they are both the
+				// actor and the receiver here, and record() drops a draft whose
+				// sender is its receiver to stop members notifying themselves.
+				{
+					receiverId: customerId,
+					notificationType: NotificationType.ORDER_CREATED,
+					notificationTitle: 'Order placed',
+					notificationDesc: summary,
+					orderId: order._id,
+				},
+				...Array.from(byAgent.values()).map((g) => ({
+					receiverId: g.agentId,
+					senderId: customerId,
+					notificationType: NotificationType.NEW_ORDER,
+					notificationTitle: 'New order received',
+					notificationDesc: g.names.join(', '),
+					orderId: order._id,
+				})),
+				...adminIds.map((id) => ({
+					receiverId: id,
+					senderId: customerId,
+					notificationType: NotificationType.NEW_ORDER,
+					notificationTitle: 'New order placed',
+					notificationDesc: summary,
+					orderId: order._id,
+				})),
+			]);
 		} catch (err) {
 			console.log('Error, Service.model:', err);
 			// best-effort rollback of the header if items failed
@@ -204,6 +280,45 @@ export class OrderService {
 		await this.recordEvents([
 			{ orderItemId: itemId, orderId: item.orderId, status: to, changedBy: authMemberId },
 		]);
+
+		const copy = ADVANCE_COPY[to]!;
+		const adminIds = await this.notificationService.activeAdminIds();
+		const ref = { orderId: item.orderId, orderItemId: itemId };
+
+		await this.notificationService.record([
+			// the customer asked for this order; they are the one who wants to know
+			{
+				receiverId: item.customerId,
+				senderId: authMemberId,
+				notificationType: copy.type,
+				notificationTitle: copy.title,
+				notificationDesc: copy.desc,
+				...ref,
+			},
+			...adminIds.map((id) => ({
+				receiverId: id,
+				senderId: authMemberId,
+				notificationType: copy.type,
+				notificationTitle: copy.title,
+				notificationDesc: copy.desc,
+				...ref,
+			})),
+			// The agent hears about their own line only when somebody ELSE moved
+			// it. Agents advance their own lines constantly; telling them about
+			// the button they just pressed would be noise, not news.
+			...(authMemberType === MemberType.ADMIN
+				? [
+						{
+							receiverId: item.agentId,
+							senderId: authMemberId,
+							notificationType: NotificationType.ORDER_DELIVERY_UPDATE,
+							notificationTitle: 'Delivery status updated',
+							notificationDesc: `An admin moved one of your lines to ${to.toLowerCase().replace(/_/g, ' ')}.`,
+							...ref,
+						},
+				  ]
+				: []),
+		]);
 		return this.fetchOneItem(itemId);
 	}
 
@@ -236,6 +351,67 @@ export class OrderService {
 		await this.recordEvents([
 			{ orderItemId: itemId, orderId: item.orderId, status: OrderStatus.CANCELLED, changedBy: authMemberId },
 		]);
+
+		/**
+		 * An agent turning down a line that never left PENDING is a rejection,
+		 * not a cancellation: the order had not been accepted yet, so nothing
+		 * was undone. There is no REJECTED status to read this off, so it is
+		 * derived from who cancelled and from where.
+		 */
+		const rejected = !isAdmin && isOwnerAgent && from === OrderStatus.PENDING;
+		const byCustomer = item.customerId.toString() === me;
+		const adminIds = await this.notificationService.activeAdminIds();
+		const ref = { orderId: item.orderId, orderItemId: itemId };
+		const base = { senderId: authMemberId, ...ref };
+
+		const drafts: T[] = [];
+		if (byCustomer) {
+			// the supplying agent is the one who has to stop preparing it
+			drafts.push({
+				...base,
+				receiverId: item.agentId,
+				notificationType: NotificationType.ORDER_CANCELLED_BY_CLIENT,
+				notificationTitle: 'Order cancelled by client',
+				notificationDesc: 'The customer cancelled one line of this order.',
+			});
+		} else if (rejected) {
+			drafts.push({
+				...base,
+				receiverId: item.customerId,
+				notificationType: NotificationType.ORDER_REJECTED,
+				notificationTitle: 'Order declined',
+				notificationDesc: 'The agent could not take this order on.',
+			});
+		} else {
+			drafts.push({
+				...base,
+				receiverId: item.customerId,
+				notificationType: NotificationType.ORDER_CANCELLED,
+				notificationTitle: 'Order cancelled',
+				notificationDesc: 'One line of this order was cancelled.',
+			});
+			// an admin cancelling is news to BOTH sides, not just the customer
+			if (isAdmin) {
+				drafts.push({
+					...base,
+					receiverId: item.agentId,
+					notificationType: NotificationType.ORDER_CANCELLED,
+					notificationTitle: 'Order cancelled',
+					notificationDesc: 'An admin cancelled one of your lines.',
+				});
+			}
+		}
+
+		drafts.push(
+			...adminIds.map((id) => ({
+				...base,
+				receiverId: id,
+				notificationType: rejected ? NotificationType.ORDER_REJECTED : NotificationType.ORDER_CANCELLED,
+				notificationTitle: rejected ? 'Order declined by agent' : 'Order cancelled',
+				notificationDesc: 'One line of this order is no longer going ahead.',
+			})),
+		);
+		await this.notificationService.record(drafts as any);
 		return this.fetchOneItem(itemId);
 	}
 
@@ -275,6 +451,53 @@ export class OrderService {
 			})),
 		);
 
+		/**
+		 * One notification per recipient for the WHOLE order, never one per
+		 * line: cancelling a five-line order is one thing that happened, and
+		 * five identical rows in the bell would read as a bug. Nothing is sent
+		 * at all when the call changed nothing.
+		 */
+		if (affected.length) {
+			const byAgent = new Map<string, ObjectId>();
+			for (const line of affected) byAgent.set(String(line.agentId), line.agentId);
+
+			const adminIds = await this.notificationService.activeAdminIds();
+			const n = affected.length;
+			const desc = `${n} line${n === 1 ? '' : 's'} of this order ${n === 1 ? 'was' : 'were'} cancelled.`;
+			const base = { senderId: authMemberId, orderId: order._id };
+
+			await this.notificationService.record([
+				...Array.from(byAgent.values()).map((agentId) => ({
+					...base,
+					receiverId: agentId,
+					notificationType: isAdmin
+						? NotificationType.ORDER_CANCELLED
+						: NotificationType.ORDER_CANCELLED_BY_CLIENT,
+					notificationTitle: isAdmin ? 'Order cancelled' : 'Order cancelled by client',
+					notificationDesc: desc,
+				})),
+				// the customer is told only when it was not their own doing
+				...(isAdmin
+					? [
+							{
+								...base,
+								receiverId: order.customerId,
+								notificationType: NotificationType.ORDER_CANCELLED,
+								notificationTitle: 'Order cancelled',
+								notificationDesc: desc,
+							},
+					  ]
+					: []),
+				...adminIds.map((id) => ({
+					...base,
+					receiverId: id,
+					notificationType: NotificationType.ORDER_CANCELLED,
+					notificationTitle: 'Order cancelled',
+					notificationDesc: desc,
+				})),
+			]);
+		}
+
 		return this.fetchOneOrder(order._id);
 	}
 
@@ -298,7 +521,10 @@ export class OrderService {
 		const qty = item.itemQuantity ?? 0;
 		if (qty <= 0) return;
 		if (item.itemType === OrderItemType.PLANT) {
-			await this.plantModel.findByIdAndUpdate(item.refId, { $inc: { plantStock: qty } }).exec();
+			// a cancelled line never really happened: return the units and the count
+			await this.plantModel
+				.findByIdAndUpdate(item.refId, { $inc: { plantStock: qty, plantOrders: -1 } })
+				.exec();
 		} else {
 			await this.accessoryModel.findByIdAndUpdate(item.refId, { $inc: { accessoryStock: qty } }).exec();
 		}

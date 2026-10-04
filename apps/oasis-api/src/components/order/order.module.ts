@@ -8,6 +8,7 @@ import OrderItemEventSchema from '../../schema/OrderItemEvent.model';
 import PlantSchema from '../../schema/Plant.model';
 import AccessorySchema from '../../schema/Accessory.model';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
 	imports: [
@@ -19,6 +20,7 @@ import { AuthModule } from '../auth/auth.module';
 			{ name: 'Accessory', schema: AccessorySchema },
 		]),
 		AuthModule,
+		NotificationModule,
 	],
 	providers: [OrderResolver, OrderService],
 	exports: [OrderService],
