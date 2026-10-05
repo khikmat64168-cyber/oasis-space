@@ -89,6 +89,13 @@ const PlantSchema = new Schema(
 			type: String,
 		},
 
+		// Relative path to an uploaded .glb/.gltf, e.g. "uploads/plant/models/<uuid>.glb".
+		// Optional: a listing without one falls back to the image gallery, which is
+		// why nothing downstream may assume a model exists.
+		plantModel3D: {
+			type: String,
+		},
+
 		// the AGENT (nursery/seller) who owns this listing
 		memberId: {
 			type: Schema.Types.ObjectId,

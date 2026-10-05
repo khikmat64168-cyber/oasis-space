@@ -16,7 +16,15 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { MemberType } from '../../libs/enums/member.enums';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { MemberUpdate } from '../../libs/dto/member/member.update';
-import { ensureUploadDir, getSerialForImage, isValidImage, isValidTarget, shapeIntoMongoObjectId } from '../../libs/config';
+import {
+	ensureUploadDir,
+	getSerialForImage,
+	isValidImage,
+	isValidModel,
+	isValidModelTarget,
+	isValidTarget,
+	shapeIntoMongoObjectId,
+} from '../../libs/config';
 import { WithoutGuard } from '../auth/guards/without.guard';
 
 import { GraphQLUpload, FileUpload } from 'graphql-upload';
@@ -189,9 +197,17 @@ export class MemberResolver {
 		if (!isValidTarget(String(target))) throw new Error(Message.NOT_ALLOWED_REQUEST);
 
 		const uploadedImages: string[] = [];
-		const promisedList = files.map(async (img: Promise<FileUpload>, index: number): Promise<Promise<void>> => {
+		// A rejected file used to be swallowed here and the caller received a
+		// shorter list with no explanation, so picking an unsupported format
+		// looked like the button simply did nothing. Failures are collected and
+		// reported instead.
+		const failures: string[] = [];
+
+		const promisedList = files.map(async (img: Promise<FileUpload>, index: number): Promise<void> => {
+			let name = `file ${index + 1}`;
 			try {
-				const { filename, mimetype, encoding, createReadStream } = await img;
+				const { filename, mimetype, createReadStream } = await img;
+				if (filename) name = filename;
 
 				if (!isValidImage(filename, mimetype)) throw new Error(Message.PROVIDE_ALLOWED_FORMAT);
 
@@ -200,21 +216,68 @@ export class MemberResolver {
 				ensureUploadDir(`uploads/${target}`);
 				const stream = createReadStream();
 
-				const result = await new Promise((resolve, reject) => {
+				await new Promise((resolve, reject) => {
 					stream
 						.pipe(createWriteStream(url))
 						.on('finish', () => resolve(true))
-						.on('error', () => reject(false));
+						.on('error', (err) => reject(err));
 				});
-				if (!result) throw new Error(Message.UPLOAD_FAILED);
 
 				uploadedImages[index] = url;
 			} catch (err) {
-				console.log('Error, file missing!', err);
+				const reason = err instanceof Error ? err.message : Message.UPLOAD_FAILED;
+				console.log('Error, imagesUploader:', name, reason);
+				failures.push(`${name}: ${reason}`);
 			}
 		});
 
 		await Promise.all(promisedList);
+
+		// Partial success is still a failure to the agent, who picked all of them
+		// on purpose; returning the survivors silently hides what was dropped.
+		if (failures.length) throw new Error(failures.join(' · '));
+
 		return uploadedImages;
+	}
+
+	/**
+	 * Upload one .glb/.gltf model for a plant listing.
+	 *
+	 * Kept separate from imageUploader rather than widening its format list: the
+	 * two have different callers, different size profiles and different accepted
+	 * extensions, and loosening isValidImage would also loosen avatar and article
+	 * uploads, which have no reason to accept binaries.
+	 *
+	 * AGENT and ADMIN only — a CLIENT has no listing to attach a model to.
+	 * The 15MB ceiling comes from graphqlUploadExpress in main.ts.
+	 */
+	@Roles(MemberType.AGENT, MemberType.ADMIN)
+	@UseGuards(RolesGuard)
+	@Mutation((returns) => String)
+	public async modelUploader(
+		@Args({ name: 'file', type: () => GraphQLUpload })
+		{ createReadStream, filename }: FileUpload,
+		@Args('target') target: String,
+	): Promise<string> {
+		console.log('Mutation: modelUploader');
+
+		if (!filename) throw new Error(Message.UPLOAD_FAILED);
+		if (!isValidModelTarget(String(target))) throw new Error(Message.NOT_ALLOWED_REQUEST);
+		if (!isValidModel(filename)) throw new Error(Message.PROVIDE_ALLOWED_MODEL_FORMAT);
+
+		const modelName = getSerialForImage(filename);
+		const url = `uploads/${target}/models/${modelName}`;
+		ensureUploadDir(`uploads/${target}/models`);
+		const stream = createReadStream();
+
+		const result = await new Promise((resolve, reject) => {
+			stream
+				.pipe(createWriteStream(url))
+				.on('finish', () => resolve(true))
+				.on('error', () => reject(false));
+		});
+		if (!result) throw new Error(Message.UPLOAD_FAILED);
+
+		return url;
 	}
 }

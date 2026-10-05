@@ -63,6 +63,10 @@ export class PlantInput {
 	@Field(() => String, { nullable: true })
 	plantDesc?: string;
 
+	@IsOptional()
+	@Field(() => String, { nullable: true })
+	plantModel3D?: string;
+
 	// set server-side from the authenticated AGENT — never trusted from the client
 	memberId?: ObjectId;
 }

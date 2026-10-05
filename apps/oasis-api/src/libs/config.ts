@@ -40,8 +40,8 @@ export const ensureUploadDir = (dir: string) => {
 	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 };
 
-export const validMimeTypes = ['image/png', 'image/jpg', 'image/jpeg'];
-export const validImageExtensions = ['.png', '.jpg', '.jpeg'];
+export const validMimeTypes = ['image/png', 'image/jpg', 'image/jpeg', 'image/webp'];
+export const validImageExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
 
 // SECURITY: upload target must be one of a fixed set of subfolders. This blocks
 // path traversal (e.g. target = "../../etc") when building the upload path.
@@ -51,6 +51,22 @@ export const isValidTarget = (target: string): boolean => validImageTargets.incl
 export const isValidImage = (filename: string, mimetype: string): boolean => {
 	const ext = path.parse(filename).ext.toLowerCase();
 	return validMimeTypes.includes(mimetype) || validImageExtensions.includes(ext);
+};
+
+// 3D MODEL CONFIGURATION
+//
+// Unlike images, the extension is REQUIRED rather than one of two accepted
+// signals: browsers report .glb inconsistently (model/gltf-binary on some,
+// application/octet-stream on most), so trusting the mimetype alone would
+// accept any binary. The extension is the only reliable discriminator, and
+// the stored name is regenerated below, so it never reaches the filesystem.
+export const validModelExtensions = ['.glb', '.gltf'];
+export const validModelTargets = ['plant'];
+export const isValidModelTarget = (target: string): boolean => validModelTargets.includes(target);
+
+export const isValidModel = (filename: string): boolean => {
+	const ext = path.parse(filename).ext.toLowerCase();
+	return validModelExtensions.includes(ext);
 };
 
 export const getSerialForImage = (filename: string) => {

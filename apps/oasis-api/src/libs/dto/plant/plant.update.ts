@@ -69,6 +69,10 @@ export class PlantUpdate {
 	@Field(() => String, { nullable: true })
 	plantDesc?: string;
 
+	@IsOptional()
+	@Field(() => String, { nullable: true })
+	plantModel3D?: string;
+
 	soldAt?: Date;
 
 	deletedAt?: Date;

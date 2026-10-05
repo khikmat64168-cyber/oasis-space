@@ -65,6 +65,10 @@ export class Plant {
 	@Field(() => String, { nullable: true })
 	plantDesc?: string;
 
+	/** uploaded .glb/.gltf path, or absent when this listing has images only */
+	@Field(() => String, { nullable: true })
+	plantModel3D?: string;
+
 	@Field(() => String)
 	memberId!: ObjectId;
 
