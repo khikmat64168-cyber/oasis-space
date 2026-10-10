@@ -84,8 +84,11 @@ export class AccessoryService {
 			accessoryStatus: AccessoryStatus.ACTIVE,
 		};
 
-		if (accessoryStatus === AccessoryStatus.SOLD_OUT) soldAt = moment().toDate();
-		else if (accessoryStatus === AccessoryStatus.DELETE) deletedAt = moment().toDate();
+		/* Written onto `input` as well as the local: `input` is the object
+		   findOneAndUpdate receives, so assigning only the destructured copy
+		   dropped the timestamp on every sell-out and removal. */
+		if (accessoryStatus === AccessoryStatus.SOLD_OUT) soldAt = input.soldAt = moment().toDate();
+		else if (accessoryStatus === AccessoryStatus.DELETE) deletedAt = input.deletedAt = moment().toDate();
 
 		const result = await this.accessoryModel.findOneAndUpdate(search, input, { new: true }).exec();
 		if (!result) throw new InternalServerErrorException(Message.UPDATE_FAILED);
@@ -128,9 +131,13 @@ export class AccessoryService {
 	}
 
 	private shapeMatchQuery(match: T, input: AccessoriesInquiry): void {
-		const { memberId, locationList, typeList, categoryList, periodsRange, pricesRange, text } = input.search;
+		const { memberId, compatibleWith, locationList, typeList, categoryList, periodsRange, pricesRange, text } =
+			input.search;
 
 		if (memberId) match.memberId = shapeIntoMongoObjectId(memberId);
+		// an array field matches when ANY member equals the value, so this is
+		// the plain equality Mongo already does on arrays
+		if (compatibleWith) match.compatiblePlantTypes = compatibleWith;
 		if (locationList && locationList.length) match.supplyLocation = { $in: locationList };
 		if (typeList && typeList.length) match.accessoryType = { $in: typeList };
 		if (categoryList && categoryList.length) match.accessoryCategory = { $in: categoryList };
@@ -233,8 +240,8 @@ export class AccessoryService {
 		let { accessoryStatus, soldAt, deletedAt } = input;
 		const search: T = { _id: input._id, accessoryStatus: AccessoryStatus.ACTIVE };
 
-		if (accessoryStatus === AccessoryStatus.SOLD_OUT) soldAt = moment().toDate();
-		else if (accessoryStatus === AccessoryStatus.DELETE) deletedAt = moment().toDate();
+		if (accessoryStatus === AccessoryStatus.SOLD_OUT) soldAt = input.soldAt = moment().toDate();
+		else if (accessoryStatus === AccessoryStatus.DELETE) deletedAt = input.deletedAt = moment().toDate();
 
 		const result = await this.accessoryModel.findOneAndUpdate(search, input, { new: true }).exec();
 		if (!result) throw new InternalServerErrorException(Message.UPDATE_FAILED);

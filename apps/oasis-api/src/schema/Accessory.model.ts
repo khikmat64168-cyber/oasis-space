@@ -1,6 +1,6 @@
 import { Schema } from 'mongoose';
 import { AccessoryCategory, AccessoryStatus, AccessoryType } from '../libs/enums/accessory.enum';
-import { PlantLocation } from '../libs/enums/plant.enum';
+import { PlantLocation, PlantType } from '../libs/enums/plant.enum';
 
 const AccessorySchema = new Schema(
 	{
@@ -43,6 +43,17 @@ const AccessorySchema = new Schema(
 
 		accessoryDesc: {
 			type: String,
+		},
+
+		// Which kinds of plant this accessory is actually for, as PlantType
+		// members rather than free text, so a listing cannot claim a category
+		// the catalogue does not have. Empty means the agent made no claim —
+		// the plant page then falls back to the type table in
+		// libs/plantAccessories.ts on the client.
+		compatiblePlantTypes: {
+			type: [String],
+			enum: PlantType,
+			default: [],
 		},
 
 		// where the accessory is supplied FROM (seller/agent origin) — not the delivery address

@@ -87,8 +87,12 @@ export class PlantService {
 			plantStatus: PlantStatus.ACTIVE,
 		};
 
-		if (plantStatus === PlantStatus.SOLD_OUT) soldAt = moment().toDate();
-		else if (plantStatus === PlantStatus.DELETE) deletedAt = moment().toDate();
+		/* These were being written to the destructured locals, which the stats
+		   branch below reads but `input` — the object actually handed to
+		   findOneAndUpdate — never saw. The timestamps were silently dropped on
+		   every sell-out and every removal. */
+		if (plantStatus === PlantStatus.SOLD_OUT) soldAt = input.soldAt = moment().toDate();
+		else if (plantStatus === PlantStatus.DELETE) deletedAt = input.deletedAt = moment().toDate();
 
 		const result = await this.plantModel.findOneAndUpdate(search, input, { new: true }).exec();
 		if (!result) throw new InternalServerErrorException(Message.UPDATE_FAILED);
@@ -249,8 +253,8 @@ export class PlantService {
 			plantStatus: PlantStatus.ACTIVE,
 		};
 
-		if (plantStatus === PlantStatus.SOLD_OUT) soldAt = moment().toDate();
-		else if (plantStatus === PlantStatus.DELETE) deletedAt = moment().toDate();
+		if (plantStatus === PlantStatus.SOLD_OUT) soldAt = input.soldAt = moment().toDate();
+		else if (plantStatus === PlantStatus.DELETE) deletedAt = input.deletedAt = moment().toDate();
 
 		const result = await this.plantModel.findOneAndUpdate(search, input, { new: true }).exec();
 		if (!result) throw new InternalServerErrorException(Message.UPDATE_FAILED);

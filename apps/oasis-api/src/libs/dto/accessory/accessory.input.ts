@@ -1,8 +1,8 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
-import { IsIn, IsInt, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
+import { ArrayNotEmpty, IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
 import type { ObjectId } from 'mongoose';
 import { AccessoryCategory, AccessoryStatus, AccessoryType } from '../../enums/accessory.enum';
-import { PlantLocation } from '../../enums/plant.enum';
+import { PlantLocation, PlantType } from '../../enums/plant.enum';
 import { Direction } from '../../Errors';
 import { availableAccessorySorts } from '../../config';
 // reuse the already-registered generic ranges (avoids duplicate GraphQL type names)
@@ -47,6 +47,13 @@ export class AccessoryInput {
 	@Field(() => String, { nullable: true })
 	accessoryDesc?: string;
 
+	/* At least one, and every member validated against PlantType: an accessory
+	   nobody can match to a plant would never surface anywhere. */
+	@ArrayNotEmpty()
+	@IsEnum(PlantType, { each: true })
+	@Field(() => [PlantType])
+	compatiblePlantTypes!: PlantType[];
+
 	@IsNotEmpty()
 	@Field(() => PlantLocation)
 	supplyLocation!: PlantLocation;
@@ -65,6 +72,12 @@ class AccISearch {
 	@IsOptional()
 	@Field(() => String, { nullable: true })
 	memberId?: ObjectId;
+
+	/** only accessories the agent marked as suitable for this kind of plant */
+	@IsOptional()
+	@IsEnum(PlantType)
+	@Field(() => PlantType, { nullable: true })
+	compatibleWith?: PlantType;
 
 	@IsOptional()
 	@Field(() => [AccessoryType], { nullable: true })

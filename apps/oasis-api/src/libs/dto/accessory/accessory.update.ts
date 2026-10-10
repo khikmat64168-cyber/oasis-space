@@ -1,8 +1,8 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
-import { IsInt, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
+import { ArrayNotEmpty, IsEnum, IsInt, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
 import type { ObjectId } from 'mongoose';
 import { AccessoryCategory, AccessoryStatus, AccessoryType } from '../../enums/accessory.enum';
-import { PlantLocation } from '../../enums/plant.enum';
+import { PlantLocation, PlantType } from '../../enums/plant.enum';
 
 @InputType()
 export class AccessoryUpdate {
@@ -50,6 +50,15 @@ export class AccessoryUpdate {
 	@Length(5, 500)
 	@Field(() => String, { nullable: true })
 	accessoryDesc?: string;
+
+	/* Optional here — an update that does not mention compatibility leaves it
+	   alone — but if it is sent it must still be a non-empty list of real
+	   PlantType members. */
+	@IsOptional()
+	@ArrayNotEmpty()
+	@IsEnum(PlantType, { each: true })
+	@Field(() => [PlantType], { nullable: true })
+	compatiblePlantTypes?: PlantType[];
 
 	@IsOptional()
 	@Field(() => PlantLocation, { nullable: true })

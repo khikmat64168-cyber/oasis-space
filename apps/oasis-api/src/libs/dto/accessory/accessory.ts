@@ -1,7 +1,7 @@
 import { Field, Int, ObjectType } from '@nestjs/graphql';
 import type { ObjectId } from 'mongoose';
 import { AccessoryCategory, AccessoryStatus, AccessoryType } from '../../enums/accessory.enum';
-import { PlantLocation } from '../../enums/plant.enum';
+import { PlantLocation, PlantType } from '../../enums/plant.enum';
 import { Member, TotalCounter } from '../member/member';
 import { MeLiked } from '../member/like/like';
 
@@ -33,6 +33,10 @@ export class Accessory {
 
 	@Field(() => String, { nullable: true })
 	accessoryDesc?: string;
+
+	/** plant types this accessory is meant for; empty = no claim made */
+	@Field(() => [PlantType])
+	compatiblePlantTypes!: PlantType[];
 
 	@Field(() => PlantLocation)
 	supplyLocation!: PlantLocation;
