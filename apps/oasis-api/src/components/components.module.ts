@@ -11,6 +11,8 @@ import { FollowModule } from './follow/follow.module';
 import { BoardArticleModule } from './board-article/board-article.module';
 import { NotificationModule } from './notification/notification.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { VerificationModule } from './verification/verification.module';
+import { AssistantModule } from './assistant/assistant.module';
 
 @Module({
 	imports: [
@@ -26,6 +28,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
 		FollowModule,
 		NotificationModule,
 		AnalyticsModule,
+		VerificationModule,
+		AssistantModule,
 	],
 })
 export class ComponentsModule {}
