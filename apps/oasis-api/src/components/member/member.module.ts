@@ -7,6 +7,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ViewModule } from '../view/view.module';
 import { LikeModule } from '../like/like.module';
 import FollowSchema from '../../schema/Follow.model';
+import { VerificationModule } from '../verification/verification.module';
 
 @Module({
 	imports: [
@@ -15,6 +16,7 @@ import FollowSchema from '../../schema/Follow.model';
 		AuthModule,
 		ViewModule,
 		LikeModule,
+		VerificationModule,
 	],
 	providers: [MemberResolver, MemberService],
 	exports: [MemberService],

@@ -21,6 +21,16 @@ export class Member {
 	@Field(() => String)
 	memberPhone!: string;
 
+	/** server-set; true only when signup presented a valid verification ticket */
+	@Field(() => Boolean, { nullable: true })
+	memberPhoneVerified?: boolean;
+
+	@Field(() => String, { nullable: true })
+	memberEmail?: string;
+
+	@Field(() => Boolean, { nullable: true })
+	memberEmailVerified?: boolean;
+
 	@Field(() => String)
 	memberNick!: string;
 

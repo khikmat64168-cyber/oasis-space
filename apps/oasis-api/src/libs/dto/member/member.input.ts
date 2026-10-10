@@ -16,9 +16,41 @@ export class MemberInput {
 	@Field(() => String)
 	memberPassword!: string;
 
+	/**
+	 * Still accepted so existing callers keep working, but it is NOT what the
+	 * account is created with when a ticket is present: the server reads the
+	 * number out of the signed ticket. Sending a different number here changes
+	 * nothing.
+	 */
 	@IsNotEmpty()
 	@Field(() => String)
 	memberPhone!: string;
+
+	/**
+	 * Proof that this phone number passed SMS verification, minted by
+	 * verifyPhoneCode. Required whenever SMS is configured — see
+	 * member.service.signup. There is deliberately no `phoneVerified` boolean
+	 * on this input: a client has nothing to assert, only a ticket to present.
+	 */
+	@IsOptional()
+	@Field(() => String, { nullable: true })
+	verificationTicket?: string;
+
+	/** optional contact address; not a login identifier */
+	@IsOptional()
+	@Length(5, 254)
+	@Field(() => String, { nullable: true })
+	memberEmail?: string;
+
+	/**
+	 * Real name. The column already existed on Member and the UI reads
+	 * `memberFullName || memberNick` everywhere, but signup had no way to set
+	 * it, so every account started with the nickname showing as its name.
+	 */
+	@IsOptional()
+	@Length(2, 60)
+	@Field(() => String, { nullable: true })
+	memberFullName?: string;
 
 	// NOTE: memberType is intentionally NOT accepted here. Public signup always
 	// creates a CLIENT (schema default). AGENT/ADMIN are assigned only by an

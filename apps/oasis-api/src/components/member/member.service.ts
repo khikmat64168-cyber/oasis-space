@@ -21,6 +21,8 @@ import { LikeGroup } from '../../libs/enums/like.enum';
 import { LikeService } from '../like/like.service';
 import { Follower, Following, MeFollowed } from '../../libs/dto/member/follow/follow';
 import { lookupAuthMemberLiked } from '../../libs/config';
+import { normaliseEmail, normalisePhone } from '../../libs/phone';
+import { VerificationService } from '../verification/verification.service';
 
 @Injectable()
 export class MemberService {
@@ -31,12 +33,49 @@ export class MemberService {
 		private authService: AuthService,
 		private viewService: ViewService,
 		private likeService: LikeService,
+		private verificationService: VerificationService,
 	) {}
+	/**
+	 * Create an account.
+	 *
+	 * The phone number is taken from the verification ticket, never from the
+	 * request body: the ticket is signed by this server and carries the number
+	 * verifyPhoneCode actually confirmed, so a client cannot register one
+	 * number while proving another, and `memberPhoneVerified` has no
+	 * client-supplied path at all.
+	 *
+	 * When no SMS provider is configured the ticket is not demanded — the
+	 * deployment cannot issue one, and refusing every signup would take the
+	 * whole product down for a feature that is switched off. The account is
+	 * then created with memberPhoneVerified false, which is the honest state.
+	 */
 	public async signup(input: MemberInput): Promise<Member> {
+		const smsConfigured = this.verificationService.smsAvailable;
+		let phone = normalisePhone(input.memberPhone);
+		let phoneVerified = false;
+
+		if (smsConfigured) {
+			// the ticket is the only accepted proof; its payload wins
+			phone = await this.verificationService.consumeTicket(input.verificationTicket ?? '');
+			phoneVerified = true;
+		}
+		if (!phone) throw new BadRequestException('INVALID_PHONE');
+
+		const email = normaliseEmail(input.memberEmail);
+		if (input.memberEmail && !email) throw new BadRequestException('INVALID_EMAIL');
+
 		//Hashing password
 		input.memberPassword = await this.authService.hashPassword(input.memberPassword); //hashPassword auth.service dan call qilinvotti
 		try {
-			const result = await this.memberModel.create(input);
+			const result = await this.memberModel.create({
+				...input,
+				memberPhone: phone,
+				memberPhoneVerified: phoneVerified,
+				// no fabricated address when the field was left blank
+				...(email ? { memberEmail: email, memberEmailVerified: false } : {}),
+				// never persisted on the member document
+				verificationTicket: undefined,
+			});
 			//Auth via tokens
 			result.accessToken = await this.authService.createToken(result);
 
@@ -50,6 +89,13 @@ export class MemberService {
 		}
 	}
 
+	/**
+	 * Unchanged on purpose.
+	 *
+	 * Login has always matched on memberNick + password and has never consulted
+	 * memberPhoneVerified. Gating it on verification would lock out every
+	 * account that existed before this feature, so it does not.
+	 */
 	public async login(input: LoginInput): Promise<Member> {
 		const { memberNick, memberPassword } = input;
 		const response = await this.memberModel.findOne({ memberNick: memberNick }).select('+memberPassword').exec();

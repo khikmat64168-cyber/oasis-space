@@ -27,6 +27,29 @@ const MemberSchema = new Schema(
 			required: true,
 		},
 
+		// Set by the server only, when a signup presented a valid verification
+		// ticket. Never written from client input — see MemberInput, which does
+		// not expose it, and member.service.signup, which sets it explicitly.
+		// Accounts created before phone verification existed keep `false`; they
+		// are not locked out, because login has never consulted this field.
+		memberPhoneVerified: {
+			type: Boolean,
+			default: false,
+		},
+
+		// Optional. There is no email-based login — `login` matches on
+		// memberNick — so this is a contact address, not an identifier. Sparse
+		// unique so the many accounts without one do not collide on null.
+		memberEmail: {
+			type: String,
+			index: { unique: true, sparse: true },
+		},
+
+		memberEmailVerified: {
+			type: Boolean,
+			default: false,
+		},
+
 		memberNick: {
 			type: String,
 			index: { unique: true, sparse: true },
