@@ -1,4 +1,4 @@
-import { Mutation, Resolver, Query, Args } from '@nestjs/graphql';
+import { Mutation, Resolver, Query, Args, Context } from '@nestjs/graphql';
 import { MemberService } from './member.service';
 import { InternalServerErrorException, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import {
@@ -26,6 +26,8 @@ import {
 	shapeIntoMongoObjectId,
 } from '../../libs/config';
 import { WithoutGuard } from '../auth/guards/without.guard';
+import { RefreshService } from '../auth/refresh.service';
+import { REFRESH_COOKIE_NAME, refreshCookieOptions } from '../../libs/authConfig';
 
 import { GraphQLUpload, FileUpload } from 'graphql-upload';
 import { createWriteStream } from 'fs';
@@ -33,14 +35,39 @@ import { Message } from '../../libs/Errors';
 
 @Resolver()
 export class MemberResolver {
-	constructor(private readonly memberService: MemberService) {}
+	constructor(
+		private readonly memberService: MemberService,
+		private readonly refreshService: RefreshService,
+	) {}
+
+	/**
+	 * Open a refresh session and put its token in the HttpOnly cookie.
+	 *
+	 * The token is written to Set-Cookie only — it is deliberately absent from
+	 * the GraphQL payload, so it never reaches JavaScript, the Apollo cache, or
+	 * a logged response body.
+	 */
+	private async startSession(member: Member, context: any): Promise<void> {
+		const res = context?.res;
+		if (!res?.cookie) {
+			// nothing to attach a cookie to (a test harness, say). The access
+			// token still works; the caller simply gets no refresh session,
+			// which is safer than failing the login outright.
+			console.warn('[auth] no response object on the GraphQL context; refresh cookie not set');
+			return;
+		}
+		const issued = await this.refreshService.issue(member._id, context?.req?.headers?.['user-agent']);
+		res.cookie(REFRESH_COOKIE_NAME, issued.token, refreshCookieOptions());
+	}
 
 	@Mutation(() => Member)
 	// @UsePipes(ValidationPipe). Global integration dan so'ng olib tashlandi ?
-	public async signup(@Args('input') input: MemberInput): Promise<Member> {
+	public async signup(@Args('input') input: MemberInput, @Context() context: any): Promise<Member> {
 		try {
 			console.log('Mutation : signup');
-			return await this.memberService.signup(input);
+			const member = await this.memberService.signup(input);
+			await this.startSession(member, context);
+			return member;
 		} catch (err) {
 			console.log('Error, signup:', err);
 			throw new InternalServerErrorException(err);
@@ -49,10 +76,12 @@ export class MemberResolver {
 
 	@Mutation(() => Member)
 	// @UsePipes(ValidationPipe). Global integration dan so'ng olib tashlandi ?
-	public async login(@Args('input') input: LoginInput): Promise<Member> {
+	public async login(@Args('input') input: LoginInput, @Context() context: any): Promise<Member> {
 		try {
 			console.log('Mutation: login');
-			return await this.memberService.login(input);
+			const member = await this.memberService.login(input);
+			await this.startSession(member, context);
+			return member;
 		} catch (err) {
 			console.log('Error, login:', err);
 			throw new InternalServerErrorException(err);

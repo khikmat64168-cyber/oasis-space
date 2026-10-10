@@ -8,6 +8,7 @@ import { ViewModule } from '../view/view.module';
 import { LikeModule } from '../like/like.module';
 import FollowSchema from '../../schema/Follow.model';
 import { VerificationModule } from '../verification/verification.module';
+import { AuthController } from '../auth/auth.controller';
 
 @Module({
 	imports: [
@@ -18,6 +19,12 @@ import { VerificationModule } from '../verification/verification.module';
 		LikeModule,
 		VerificationModule,
 	],
+	/*
+	 * AuthController lives here rather than in AuthModule because it needs
+	 * MemberService, and importing MemberModule from AuthModule would close a
+	 * circle (MemberModule already imports AuthModule).
+	 */
+	controllers: [AuthController],
 	providers: [MemberResolver, MemberService],
 	exports: [MemberService],
 })

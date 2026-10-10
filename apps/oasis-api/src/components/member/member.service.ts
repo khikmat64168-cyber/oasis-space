@@ -117,6 +117,21 @@ export class MemberService {
 		return response;
 	}
 
+	/**
+	 * The member behind a refresh session, or null when the account may no
+	 * longer sign in.
+	 *
+	 * Possession of a refresh cookie must not outrank the account's own state:
+	 * a member blocked or deleted after signing in has to stop getting new
+	 * access tokens, not keep minting them until the cookie expires.
+	 */
+	public async getMemberForSession(memberId: ObjectId | string): Promise<Member | null> {
+		const member = await this.memberModel.findById(memberId).exec();
+		if (!member) return null;
+		if (member.memberStatus !== MemberStatus.ACTIVE) return null;
+		return member;
+	}
+
 	public async updateMember(memberId: ObjectId, input: MemberUpdate): Promise<Member> {
 		const result = await this.memberModel
 			.findOneAndUpdate(

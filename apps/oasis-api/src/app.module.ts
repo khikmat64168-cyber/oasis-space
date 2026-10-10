@@ -17,6 +17,13 @@ import { SocketModule } from './socket/socket.module';
 			driver: ApolloDriver,
 			playground: true,
 			autoSchemaFile: true,
+			/*
+			 * `res` has to be on the context for login and signup to set the
+			 * refresh cookie. The default context carries only `req`, which is
+			 * all the guards ever needed — so without this the session was
+			 * created and then silently not delivered.
+			 */
+			context: ({ req, res }: T) => ({ req, res }),
 			formatError: (error: T) => {
 				const graphQLForrmatedError = {
 					code: error?.extensions?.code,
