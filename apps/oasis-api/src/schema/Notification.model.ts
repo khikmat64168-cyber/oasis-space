@@ -52,6 +52,23 @@ const NotificationSchema = new Schema(
 			type: Schema.Types.ObjectId,
 			ref: 'OrderItem',
 		},
+
+		/*
+		 * The conversation this is about, following the same pattern as
+		 * orderId. The notification carries a preview only; the thread is the
+		 * record, so marking this read or ignoring it never loses a message.
+		 */
+		conversationId: {
+			type: Schema.Types.ObjectId,
+			ref: 'Conversation',
+		},
+
+		// first-phase one-way inquiries. Kept so rows written before
+		// conversations existed still resolve; nothing writes it any more.
+		inquiryId: {
+			type: Schema.Types.ObjectId,
+			ref: 'Inquiry',
+		},
 	},
 	{ timestamps: true, collection: 'notifications' },
 );

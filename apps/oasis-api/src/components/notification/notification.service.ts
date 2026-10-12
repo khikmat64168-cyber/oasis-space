@@ -18,6 +18,8 @@ export interface NotificationDraft {
 	notificationDesc?: string;
 	orderId?: ObjectId;
 	orderItemId?: ObjectId;
+	inquiryId?: ObjectId;
+	conversationId?: ObjectId;
 }
 
 @Injectable()

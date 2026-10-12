@@ -13,6 +13,7 @@ import { NotificationModule } from './notification/notification.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { VerificationModule } from './verification/verification.module';
 import { AssistantModule } from './assistant/assistant.module';
+import { ConversationModule } from './conversation/conversation.module';
 
 @Module({
 	imports: [
@@ -30,6 +31,7 @@ import { AssistantModule } from './assistant/assistant.module';
 		AnalyticsModule,
 		VerificationModule,
 		AssistantModule,
+		ConversationModule,
 	],
 })
 export class ComponentsModule {}

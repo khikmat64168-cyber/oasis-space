@@ -66,6 +66,19 @@ const MemberSchema = new Schema(
 			type: String,
 		},
 
+		/*
+		 * Relative path under uploads/member/, as returned by imageUploader.
+		 *
+		 * This field existed on the GraphQL Member type and in MemberUpdate,
+		 * but never here — so Mongoose stripped it on every write and a
+		 * profile photo could be uploaded, accepted, and silently discarded.
+		 * Nothing reported an error because nothing failed: the field simply
+		 * was not part of the document.
+		 */
+		memberImage: {
+			type: String,
+		},
+
 		memberAddress: {
 			type: String,
 		},

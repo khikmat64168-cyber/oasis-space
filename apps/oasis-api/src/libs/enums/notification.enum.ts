@@ -5,9 +5,10 @@ import { registerEnumType } from '@nestjs/graphql';
  * underlying state changes, so a notification is always a record of something
  * that really occurred — never a reminder generated on read.
  *
- * Scope is deliberately order-only. Payment, invoice, messaging and inventory
- * types are NOT listed here because the backend has no such events to fire them
- * from; see docs/notifications-phase1-audit.md in the client repo.
+ * Scope was order-only until AGENT_INQUIRY: payment, invoice and inventory
+ * types are still absent because the backend has no such events to fire them
+ * from; see docs/notifications-phase1-audit.md in the client repo. The inquiry
+ * type exists because a real event now writes it.
  */
 export enum NotificationType {
 	// ---- to the CLIENT who placed the order ----
@@ -33,6 +34,12 @@ export enum NotificationType {
 	NEW_ORDER = 'NEW_ORDER',
 	/** an ADMIN moved one of this agent's lines; the agent did not do it themselves */
 	ORDER_DELIVERY_UPDATE = 'ORDER_DELIVERY_UPDATE',
+
+	// ---- member to member ----
+	/** a CLIENT opened or continued a thread with this agent */
+	AGENT_INQUIRY = 'AGENT_INQUIRY',
+	/** the AGENT answered inside that thread */
+	AGENT_REPLY = 'AGENT_REPLY',
 
 	// ---- retired, never written again ----
 	// Kept so the rows already in the `notifications` collection still resolve
