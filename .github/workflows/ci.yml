@@ -1,8 +1,16 @@
-# Oasis API — CI.
+# Oasis API — CI/CD.
 #
-# Validation only. Nothing here deploys, migrates, or connects to a database:
-# the test suite mocks its models, so no MONGO_* value is needed and none is
-# supplied. Deployment stays a deliberate act performed with real credentials.
+# Three jobs. `validate` and `docker-build` run on every push and pull request
+# and change nothing: the test suite mocks its models, so no MONGO_* value is
+# needed and none is supplied. `deploy` runs only after both are green, only on
+# a push to `main`, and only once the repository has been pointed at Coolify —
+# see docs/DEPLOY-PLAN.md in the client repository, phase 8. Until
+# `vars.COOLIFY_URL` exists it is skipped, not failed, so this file can be
+# merged before the server is ready.
+#
+# GitHub holds one credential: a Coolify API token that can start a deployment
+# and read its status. Production secrets (SECRET_TOKEN, MONGO_PROD, …) live in
+# Coolify and never pass through here.
 #
 # This repository installs with npm (package-lock.json); the client repository
 # uses yarn. They are not interchangeable.
@@ -14,9 +22,12 @@ on:
   pull_request:
     branches: [main]
 
+# A new push to a pull request makes the previous run pointless, so that run is
+# cancelled. A push to a branch is never cancelled: its run may already be in
+# the middle of a deployment, and abandoning it would leave the result unknown.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
@@ -54,3 +65,110 @@ jobs:
       - name: Lint (reported, not enforced)
         continue-on-error: true
         run: npm run lint -- --no-fix
+
+  # `validate` proves the code builds; this proves the Dockerfile does — the
+  # two-stage copy, the production-only install, the .dockerignore. Coolify
+  # builds from the same Dockerfile, so a break here would otherwise first
+  # appear on the server. The image is thrown away: nothing is pushed anywhere.
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build --tag oasis-api:ci .
+
+  deploy:
+    needs: [validate, docker-build]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.COOLIFY_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    # The environment restricts which branch may deploy and, if reviewers are
+    # configured on it, holds the job until one approves.
+    environment:
+      name: production
+      url: ${{ vars.SMOKE_URL }}
+
+    # One deployment at a time. A second push waits for the first to finish
+    # rather than racing it on the server.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    env:
+      COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
+
+    steps:
+      # Coolify builds the branch head it pulls from GitHub, which is this
+      # commit: the push that started this run is the newest one, and any
+      # later push waits behind it in the concurrency group above.
+      - name: Start the Coolify deployment
+        id: start
+        run: |
+          set -euo pipefail
+          if ! response=$(curl -sS --fail-with-body --max-time 30 \
+            -H "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_URL/api/v1/deploy?uuid=$APP_UUID&force=false"); then
+            echo "::error::Coolify refused the deploy request: $response"
+            exit 1
+          fi
+          echo "$response"
+          deployment=$(jq -r '.deployments[0].deployment_uuid // empty' <<<"$response")
+          if [ -z "$deployment" ]; then
+            echo "::error::Coolify accepted the request but returned no deployment id."
+            exit 1
+          fi
+          echo "deployment=$deployment" >> "$GITHUB_OUTPUT"
+
+      # The old container keeps serving until the new one is healthy, so the
+      # site answering 200 proves nothing on its own. Coolify's own status is
+      # what says whether this commit is the one now running.
+      - name: Wait for Coolify to finish
+        env:
+          DEPLOYMENT: ${{ steps.start.outputs.deployment }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 30 * 60))
+          while :; do
+            if ! body=$(curl -sS --fail-with-body --max-time 30 \
+              -H "Authorization: Bearer $COOLIFY_TOKEN" \
+              "$COOLIFY_URL/api/v1/deployments/$DEPLOYMENT"); then
+              echo "::error::Could not read the status of deployment $DEPLOYMENT: $body"
+              exit 1
+            fi
+            status=$(jq -r '.status' <<<"$body")
+            echo "$(date -u +%H:%M:%S) $status"
+            case "$status" in
+              finished) exit 0 ;;
+              failed | cancelled*)
+                echo "::error::Coolify deployment $DEPLOYMENT ended as '$status'. The build log is in Coolify → oasis-api → Deployments."
+                exit 1 ;;
+            esac
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Coolify deployment $DEPLOYMENT did not finish within 30 minutes (last status: '$status')."
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Smoke test
+        env:
+          SMOKE_URL: ${{ vars.SMOKE_URL }}
+        run: |
+          set -uo pipefail
+          for attempt in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$SMOKE_URL")
+            echo "attempt $attempt: HTTP $code"
+            [ "$code" = 200 ] && exit 0
+            sleep 10
+          done
+          echo "::error::$SMOKE_URL did not answer 200 after the deployment finished."
+          exit 1
