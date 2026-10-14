@@ -14,6 +14,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { VerificationModule } from './verification/verification.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { ConversationModule } from './conversation/conversation.module';
+import { AgentApplicationModule } from './agentApplication/agentApplication.module';
+import { EventModule } from './event/event.module';
 
 @Module({
 	imports: [
@@ -32,6 +34,8 @@ import { ConversationModule } from './conversation/conversation.module';
 		VerificationModule,
 		AssistantModule,
 		ConversationModule,
+		AgentApplicationModule,
+		EventModule,
 	],
 })
 export class ComponentsModule {}

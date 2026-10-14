@@ -52,9 +52,40 @@ export class MemberInput {
 	@Field(() => String, { nullable: true })
 	memberFullName?: string;
 
-	// NOTE: memberType is intentionally NOT accepted here. Public signup always
-	// creates a CLIENT (schema default). AGENT/ADMIN are assigned only by an
-	// ADMIN via updateMemberByAdmin — never self-selected at registration.
+	/**
+	 * Which of the two public registration paths this is.
+	 *
+	 * It used to be absent entirely, with a note saying the role was assigned
+	 * by the server — which is why choosing AGENT on the signup form produced
+	 * a CLIENT account and somebody then edited MongoDB by hand.
+	 *
+	 * It is accepted now, but it is a REQUEST, not an assignment: CLIENT and
+	 * AGENT are the only values the validator allows, and an AGENT request
+	 * does not create an agent. It creates a PENDING account plus an
+	 * application for an ADMIN to review. ADMIN is unreachable from here by
+	 * construction, and remains assignable only through updateMemberByAdmin.
+	 */
+	@IsOptional()
+	@IsIn([MemberType.CLIENT, MemberType.AGENT])
+	@Field(() => MemberType, { nullable: true })
+	memberType?: MemberType;
+
+	/** required for an AGENT application, rejected on a CLIENT signup */
+	@IsOptional()
+	@Length(2, 100)
+	@Field(() => String, { nullable: true })
+	organizationName?: string;
+
+	/**
+	 * The applicant's business registration number. Validated for shape only
+	 * — nothing here asserts the business exists; that is what the admin
+	 * review is for.
+	 */
+	@IsOptional()
+	@Length(5, 40)
+	@Field(() => String, { nullable: true })
+	businessRegistrationNumber?: string;
+
 	@IsOptional()
 	@Field(() => MemberAuthType, { nullable: true })
 	memberAuthType?: MemberAuthType;

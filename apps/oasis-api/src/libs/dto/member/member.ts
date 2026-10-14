@@ -3,6 +3,7 @@ import type { ObjectId } from 'mongoose';
 import { MemberAuthType, MemberStatus, MemberType } from '../../enums/member.enums';
 import { MeLiked } from './like/like';
 import { MeFollowed } from './follow/follow';
+import { AgentApplicationReceipt } from '../agentApplication/agentApplication';
 
 @ObjectType()
 export class Member {
@@ -95,6 +96,17 @@ export class Member {
 
 	@Field(() => String, { nullable: true })
 	accessToken?: string;
+
+	/**
+	 * Present on exactly one response: a signup that was an agent
+	 * application.
+	 *
+	 * It carries the receipt — the short-lived status ticket and what the
+	 * waiting screen renders — INSTEAD of `accessToken`, which is null in
+	 * that case because a pending applicant has no session.
+	 */
+	@Field(() => AgentApplicationReceipt, { nullable: true })
+	agentApplication?: AgentApplicationReceipt;
 
 	//** from aggregasion  **/
 	@Field(() => [MeLiked], { nullable: true })

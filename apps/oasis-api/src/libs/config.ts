@@ -28,6 +28,8 @@ export const availableAccessorySorts = [
 ];
 
 export const availableCommentSorts = ['createdAt', 'updatedAt'];
+
+export const availableEventSorts = ['createdAt', 'updatedAt', 'eventDate'];
 // IMAGE CONFIGURATION (config.js)
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
@@ -45,7 +47,7 @@ export const validImageExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
 
 // SECURITY: upload target must be one of a fixed set of subfolders. This blocks
 // path traversal (e.g. target = "../../etc") when building the upload path.
-export const validImageTargets = ['member', 'plant', 'accessory', 'article'];
+export const validImageTargets = ['member', 'plant', 'accessory', 'article', 'event'];
 export const isValidTarget = (target: string): boolean => validImageTargets.includes(target);
 
 export const isValidImage = (filename: string, mimetype: string): boolean => {

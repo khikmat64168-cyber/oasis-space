@@ -97,6 +97,16 @@ export class AuthService {
 		if (!live) throw new UnauthorizedException('ACCOUNT_NOT_FOUND');
 		if (live.memberStatus === MemberStatus.DELETE) throw new UnauthorizedException('ACCOUNT_DELETED');
 		if (live.memberStatus === MemberStatus.BLOCK) throw new ForbiddenException('ACCOUNT_BLOCKED');
+		/*
+		 * An unapproved agent applicant has no access to anything.
+		 *
+		 * This is the single place that closes every protected path at once —
+		 * guards, resolvers and the refresh endpoint all come through here —
+		 * so a token that was somehow obtained, or one minted before the
+		 * account was moved back to PENDING, stops working on its next
+		 * request rather than at its expiry.
+		 */
+		if (live.memberStatus === MemberStatus.PENDING) throw new ForbiddenException('AGENT_APPLICATION_PENDING');
 
 		member.memberType = live.memberType as Member['memberType'];
 		member.memberStatus = live.memberStatus as Member['memberStatus'];

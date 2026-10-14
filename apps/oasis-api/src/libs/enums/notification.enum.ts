@@ -41,6 +41,14 @@ export enum NotificationType {
 	/** the AGENT answered inside that thread */
 	AGENT_REPLY = 'AGENT_REPLY',
 
+	// ---- agent onboarding ----
+	/** someone applied to become an agent; written to every active ADMIN */
+	AGENT_APPLICATION_SUBMITTED = 'AGENT_APPLICATION_SUBMITTED',
+	/** an ADMIN approved the application; written to the applicant */
+	AGENT_APPLICATION_APPROVED = 'AGENT_APPLICATION_APPROVED',
+	/** an ADMIN turned it down; written to the applicant */
+	AGENT_APPLICATION_REJECTED = 'AGENT_APPLICATION_REJECTED',
+
 	// ---- retired, never written again ----
 	// Kept so the rows already in the `notifications` collection still resolve
 	// through GraphQL. Removing them would break serialization of every

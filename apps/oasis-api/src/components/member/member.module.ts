@@ -9,6 +9,7 @@ import { LikeModule } from '../like/like.module';
 import FollowSchema from '../../schema/Follow.model';
 import { VerificationModule } from '../verification/verification.module';
 import { AuthController } from '../auth/auth.controller';
+import { AgentApplicationModule } from '../agentApplication/agentApplication.module';
 
 @Module({
 	imports: [
@@ -18,6 +19,8 @@ import { AuthController } from '../auth/auth.controller';
 		ViewModule,
 		LikeModule,
 		VerificationModule,
+		// signup records an agent application in the same request
+		AgentApplicationModule,
 	],
 	/*
 	 * AuthController lives here rather than in AuthModule because it needs

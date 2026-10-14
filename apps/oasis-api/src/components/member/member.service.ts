@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, ObjectId } from 'mongoose';
 import { Member, Members } from '../../libs/dto/member/member';
@@ -16,6 +16,8 @@ import { MemberUpdate } from '../../libs/dto/member/member.update';
 import { StatisticModifier, T } from '../../libs/types/common';
 import { ViewService } from '../view/view.service';
 import { ViewGroup } from '../../libs/enums/view.enum';
+import { AgentApplicationService } from '../agentApplication/agentApplication.service';
+import { AgentApplicationStatus } from '../../libs/enums/agentApplication.enum';
 import { LikeInput } from '../../libs/dto/member/like/like.input';
 import { LikeGroup } from '../../libs/enums/like.enum';
 import { LikeService } from '../like/like.service';
@@ -34,6 +36,7 @@ export class MemberService {
 		private viewService: ViewService,
 		private likeService: LikeService,
 		private verificationService: VerificationService,
+		private agentApplicationService: AgentApplicationService,
 	) {}
 	/**
 	 * Create an account.
@@ -64,6 +67,34 @@ export class MemberService {
 		const email = normaliseEmail(input.memberEmail);
 		if (input.memberEmail && !email) throw new BadRequestException('INVALID_EMAIL');
 
+		/*
+		 * Which of the two registration paths this is.
+		 *
+		 * The requested type used to be dropped entirely — the input did not
+		 * carry it and the schema default made every account a CLIENT, which
+		 * is why picking AGENT on the form produced a client and somebody
+		 * then edited MongoDB by hand. It is honoured now, but an AGENT
+		 * request does not create an agent: it creates a PENDING account and
+		 * an application. ADMIN is unreachable: the input validator permits
+		 * only CLIENT and AGENT.
+		 */
+		const wantsAgent = input.memberType === MemberType.AGENT;
+		const organizationName = input.organizationName?.trim() ?? '';
+		const registrationNumber = input.businessRegistrationNumber?.trim() ?? '';
+
+		if (wantsAgent) {
+			// validated here as well as in the browser: the form is a
+			// convenience, this is the rule
+			if (organizationName.length < 2) throw new BadRequestException('ORGANIZATION_NAME_REQUIRED');
+			if (!/^[0-9A-Za-z-]{5,40}$/.test(registrationNumber.replace(/\s+/g, ''))) {
+				throw new BadRequestException('BUSINESS_REGISTRATION_NUMBER_INVALID');
+			}
+		} else if (organizationName || registrationNumber) {
+			// a client signup carrying organisation fields is a payload that
+			// was edited; it is refused rather than quietly ignored
+			throw new BadRequestException('ORGANIZATION_FIELDS_NOT_ALLOWED');
+		}
+
 		//Hashing password
 		input.memberPassword = await this.authService.hashPassword(input.memberPassword); //hashPassword auth.service dan call qilinvotti
 		try {
@@ -71,11 +102,35 @@ export class MemberService {
 				...input,
 				memberPhone: phone,
 				memberPhoneVerified: phoneVerified,
-				// no fabricated address when the field was left blank
-				...(email ? { memberEmail: email, memberEmailVerified: false } : {}),
+				// the requested role is kept, so the registration intent is
+				// never lost — but an agent starts PENDING and can do nothing
+				// until an ADMIN approves the application below
+				memberType: wantsAgent ? MemberType.AGENT : MemberType.CLIENT,
+				memberStatus: wantsAgent ? MemberStatus.PENDING : MemberStatus.ACTIVE,
 				// never persisted on the member document
 				verificationTicket: undefined,
+				organizationName: undefined,
+				businessRegistrationNumber: undefined,
+				...(email ? { memberEmail: email, memberEmailVerified: false } : {}),
 			});
+
+			if (wantsAgent) {
+				/*
+				 * No token. A pending applicant gets a receipt and a waiting
+				 * screen; issuing an access token here — or letting the
+				 * resolver open a refresh session — is exactly the hole this
+				 * workflow exists to close.
+				 */
+				const receipt = await this.agentApplicationService.createForSignup({
+					memberId: result._id,
+					memberNick: result.memberNick,
+					organizationName,
+					businessRegistrationNumber: registrationNumber,
+				});
+				result.agentApplication = receipt;
+				return result;
+			}
+
 			//Auth via tokens
 			result.accessToken = await this.authService.createToken(result);
 
@@ -110,6 +165,23 @@ export class MemberService {
 
 		const isMatch = await this.authService.comparePassword(input.memberPassword, response.memberPassword ?? '');
 		if (!isMatch) throw new InternalServerErrorException(Message.WRONG_PASSWORD);
+
+		/*
+		 * An agent application that has not been approved gets no session.
+		 *
+		 * Checked AFTER the password, deliberately: answering differently
+		 * before it would turn login into an oracle that says which
+		 * nicknames are pending applications. The error names the state
+		 * because the applicant is the one who just proved who they are.
+		 */
+		if (response.memberStatus === MemberStatus.PENDING) {
+			const application = await this.agentApplicationService.latestStatusFor(response._id);
+			throw new ForbiddenException(
+				application === AgentApplicationStatus.REJECTED
+					? 'AGENT_APPLICATION_REJECTED'
+					: 'AGENT_APPLICATION_PENDING',
+			);
+		}
 
 		delete response.memberPassword;
 		response.accessToken = await this.authService.createToken(response);

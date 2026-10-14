@@ -66,7 +66,15 @@ export class MemberResolver {
 		try {
 			console.log('Mutation : signup');
 			const member = await this.memberService.signup(input);
-			await this.startSession(member, context);
+			/*
+			 * An agent application is not a sign-in.
+			 *
+			 * `signup` returns a receipt instead of an access token in that
+			 * case, and no refresh session is opened: the applicant leaves
+			 * this mutation with a waiting screen and a status ticket, not
+			 * with a logged-in browser.
+			 */
+			if (!member.agentApplication) await this.startSession(member, context);
 			return member;
 		} catch (err) {
 			console.log('Error, signup:', err);

@@ -6,6 +6,7 @@ describe('isValidTarget (upload path-traversal guard)', () => {
 		expect(isValidTarget('member')).toBe(true);
 		expect(isValidTarget('plant')).toBe(true);
 		expect(isValidTarget('article')).toBe(true);
+		expect(isValidTarget('event')).toBe(true);
 	});
 
 	it('rejects traversal / unknown targets', () => {

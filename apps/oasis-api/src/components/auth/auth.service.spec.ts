@@ -138,3 +138,42 @@ describe('AuthService', () => {
 		});
 	});
 });
+
+/**
+ * The gate every authenticated request passes through.
+ *
+ * A pending applicant has no session by design, but a token could still
+ * exist — minted before an account was moved to PENDING, or obtained some
+ * other way. The property under test is that possession of a valid token is
+ * not enough: the live record decides, on every request.
+ */
+describe('verifyActiveToken — an unapproved applicant is refused', () => {
+	const buildAuth = (memberStatus: string) => {
+		const memberModel: any = {
+			findById: jest.fn().mockReturnValue({
+				select: () => ({ lean: () => ({ exec: () => Promise.resolve({ memberType: 'AGENT', memberStatus }) }) }),
+			}),
+		};
+		const jwtService: any = {
+			verifyAsync: jest
+				.fn()
+				.mockResolvedValue({ _id: '6aca3daae55f1b0681bdd453', memberNick: 'applicant', memberType: 'AGENT' }),
+		};
+		return new AuthService(jwtService, memberModel);
+	};
+
+	it('rejects a PENDING account even with a valid token', async () => {
+		const svc = buildAuth('PENDING');
+		await expect(svc.verifyActiveToken('valid.jwt')).rejects.toThrow('AGENT_APPLICATION_PENDING');
+	});
+
+	it('still rejects BLOCK and DELETE', async () => {
+		await expect(buildAuth('BLOCK').verifyActiveToken('valid.jwt')).rejects.toThrow('ACCOUNT_BLOCKED');
+		await expect(buildAuth('DELETE').verifyActiveToken('valid.jwt')).rejects.toThrow('ACCOUNT_DELETED');
+	});
+
+	it('lets an approved agent through', async () => {
+		const member = await buildAuth('ACTIVE').verifyActiveToken('valid.jwt');
+		expect(member.memberType).toBe('AGENT');
+	});
+});
