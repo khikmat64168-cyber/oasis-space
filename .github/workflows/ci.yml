@@ -1,0 +1,56 @@
+# Oasis API — CI.
+#
+# Validation only. Nothing here deploys, migrates, or connects to a database:
+# the test suite mocks its models, so no MONGO_* value is needed and none is
+# supplied. Deployment stays a deliberate act performed with real credentials.
+#
+# This repository installs with npm (package-lock.json); the client repository
+# uses yarn. They are not interchangeable.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` installs exactly what the lockfile says and fails if the
+      # lockfile and package.json disagree — which is the report we want.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc -p apps/oasis-api/tsconfig.app.json --noEmit
+
+      - name: Tests
+        run: npm test -- --ci
+
+      - name: Build
+        run: npm run build
+
+      # Not a gate yet. `npm run lint` reports ~1700 pre-existing findings,
+      # almost all prettier/prettier formatting on files that predate the
+      # current config. Reformatting them is a separate change with its own
+      # diff, not something to smuggle into a CI run — so the result is
+      # recorded and the job is allowed to pass. Turn this into a gate once
+      # that cleanup has landed.
+      - name: Lint (reported, not enforced)
+        continue-on-error: true
+        run: npm run lint -- --no-fix
