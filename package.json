@@ -18,6 +18,7 @@
 		"start:prod": "cross-env NODE_ENV=production node dist/apps/oasis-api/main",
 		"start:prod:batch": "cross-env NODE_ENV=production node dist/apps/oasis-batch/main",
 		"lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+		"event:add": "ts-node scripts/add-event.ts",
 		"test": "jest",
 		"test:watch": "jest --watch",
 		"test:cov": "jest --coverage",

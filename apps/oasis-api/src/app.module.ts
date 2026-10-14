@@ -9,6 +9,7 @@ import { ComponentsModule } from './components/components.module';
 import { DatabaseModule } from './database/database.module';
 import { T } from './libs/types/common';
 import { SocketModule } from './socket/socket.module';
+import { formatGraphQLError } from './libs/errorFormat';
 
 @Module({
 	imports: [
@@ -24,17 +25,8 @@ import { SocketModule } from './socket/socket.module';
 			 * created and then silently not delivered.
 			 */
 			context: ({ req, res }: T) => ({ req, res }),
-			formatError: (error: T) => {
-				const graphQLForrmatedError = {
-					code: error?.extensions?.code,
-					message:
-						error?.extensions?.exception?.response?.message || error?.extensions?.response?.message || error?.message,
-				};
-
-				console.log('GRAPHQL GLOBAL ERROR:', graphQLForrmatedError);
-
-				return graphQLForrmatedError;
-			},
+			// classification, safe messages and logging: libs/errorFormat.ts
+			formatError: (formatted, error) => formatGraphQLError(formatted, error),
 		}),
 		ComponentsModule,
 		DatabaseModule,

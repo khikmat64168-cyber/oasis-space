@@ -1,6 +1,6 @@
 import { Mutation, Resolver, Query, Args, Context } from '@nestjs/graphql';
 import { MemberService } from './member.service';
-import { InternalServerErrorException, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+import { UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import {
 	AgentsInquiry,
 	LoginInput,
@@ -63,37 +63,35 @@ export class MemberResolver {
 	@Mutation(() => Member)
 	// @UsePipes(ValidationPipe). Global integration dan so'ng olib tashlandi ?
 	public async signup(@Args('input') input: MemberInput, @Context() context: any): Promise<Member> {
-		try {
-			console.log('Mutation : signup');
-			const member = await this.memberService.signup(input);
-			/*
-			 * An agent application is not a sign-in.
-			 *
-			 * `signup` returns a receipt instead of an access token in that
-			 * case, and no refresh session is opened: the applicant leaves
-			 * this mutation with a waiting screen and a status ticket, not
-			 * with a logged-in browser.
-			 */
-			if (!member.agentApplication) await this.startSession(member, context);
-			return member;
-		} catch (err) {
-			console.log('Error, signup:', err);
-			throw new InternalServerErrorException(err);
-		}
+		/*
+		 * No try/catch. It used to rethrow every failure as
+		 * `new InternalServerErrorException(err)`, which buried the real
+		 * exception — a duplicate nickname, a malformed email, a pending
+		 * application — inside a 500, and the client got a generic error.
+		 * Errors now reach libs/errorFormat.ts as they were thrown.
+		 */
+		console.log('Mutation : signup');
+		const member = await this.memberService.signup(input);
+		/*
+		 * An agent application is not a sign-in.
+		 *
+		 * `signup` returns a receipt instead of an access token in that
+		 * case, and no refresh session is opened: the applicant leaves
+		 * this mutation with a waiting screen and a status ticket, not
+		 * with a logged-in browser.
+		 */
+		if (!member.agentApplication) await this.startSession(member, context);
+		return member;
 	}
 
 	@Mutation(() => Member)
 	// @UsePipes(ValidationPipe). Global integration dan so'ng olib tashlandi ?
 	public async login(@Args('input') input: LoginInput, @Context() context: any): Promise<Member> {
-		try {
-			console.log('Mutation: login');
-			const member = await this.memberService.login(input);
-			await this.startSession(member, context);
-			return member;
-		} catch (err) {
-			console.log('Error, login:', err);
-			throw new InternalServerErrorException(err);
-		}
+		// no try/catch, for the reason given on signup above
+		console.log('Mutation: login');
+		const member = await this.memberService.login(input);
+		await this.startSession(member, context);
+		return member;
 	}
 
 	@UseGuards(AuthGuard)

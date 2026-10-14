@@ -8,6 +8,7 @@ import { graphqlUploadExpress } from 'graphql-upload';
 import * as express from 'express';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { allowedOrigins, assertAuthConfig } from './libs/authConfig';
+import { validationExceptionFactory } from './libs/errorFormat';
 
 // webpack --watch rejimida fayl o'zgarganda, eski jarayon portni to'liq
 // bo'shatib ulgurmasdan yangisi ishga tushishi mumkin (EADDRINUSE).
@@ -36,7 +37,8 @@ async function bootstrap() {
 
 	const app = await NestFactory.create(AppModule);
 	//validation pipe ni ulash uchun global integraton
-	app.useGlobalPipes(new ValidationPipe());
+	// which field failed, and how, survives to the client (libs/errorFormat.ts)
+	app.useGlobalPipes(new ValidationPipe({ exceptionFactory: validationExceptionFactory }));
 	app.useGlobalInterceptors(new LoggingInterceptor());
 	app.enableShutdownHooks();
 	/*

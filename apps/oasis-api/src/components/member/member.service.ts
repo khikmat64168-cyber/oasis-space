@@ -1,4 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+	BadRequestException,
+	ConflictException,
+	ForbiddenException,
+	Injectable,
+	InternalServerErrorException,
+	UnauthorizedException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, ObjectId } from 'mongoose';
 import { Member, Members } from '../../libs/dto/member/member';
@@ -10,7 +17,7 @@ import {
 	MemberUpdateInput,
 } from '../../libs/dto/member/member.input';
 import { MemberStatus, MemberType } from '../../libs/enums/member.enums';
-import { Direction, Message } from '../../libs/Errors';
+import { Direction, ErrorCode, Message } from '../../libs/Errors';
 import { AuthService } from '../auth/auth.service';
 import { MemberUpdate } from '../../libs/dto/member/member.update';
 import { StatisticModifier, T } from '../../libs/types/common';
@@ -25,6 +32,19 @@ import { Follower, Following, MeFollowed } from '../../libs/dto/member/follow/fo
 import { lookupAuthMemberLiked } from '../../libs/config';
 import { normaliseEmail, normalisePhone } from '../../libs/phone';
 import { VerificationService } from '../verification/verification.service';
+
+/**
+ * Which unique value a Mongo duplicate-key error (E11000) collided on, as
+ * the code the signup form shows beside that field. Null for any other error.
+ */
+export const duplicateField = (err: unknown): ErrorCode | null => {
+	if (!(err && typeof err === 'object' && (err as { code?: number }).code === 11000)) return null;
+	const keys = Object.keys((err as { keyPattern?: object }).keyPattern ?? {});
+	if (keys.includes('memberNick')) return ErrorCode.MEMBER_NICK_TAKEN;
+	if (keys.includes('memberPhone')) return ErrorCode.PHONE_ALREADY_REGISTERED;
+	if (keys.includes('memberEmail')) return ErrorCode.EMAIL_ALREADY_REGISTERED;
+	return ErrorCode.CONFLICT;
+};
 
 @Injectable()
 export class MemberService {
@@ -136,11 +156,18 @@ export class MemberService {
 
 			return result;
 		} catch (err) {
-			console.log('Error servicemodel: ', err instanceof Error ? err.message : String(err));
-			if (err instanceof Error && 'code' in err && err.code === 11000) {
-				throw new BadRequestException('Member already exists with this phone number or nickname');
-			}
-			throw new BadRequestException(Message.USED_MEMBER_NICK_OR_PHONE);
+			/*
+			 * Only a duplicate-key error is a duplicate, and its index names
+			 * which value is taken. Everything else used to be reported as
+			 * "nick or phone already used" too — including a failure to create
+			 * the agent application, which has nothing to do with either.
+			 */
+			const duplicate = duplicateField(err);
+			if (duplicate) throw new ConflictException(duplicate);
+			// an HttpException keeps its own code; anything else is unexpected,
+			// and the formatter logs it under a request id and sends the client
+			// a safe message instead of the driver's text
+			throw err;
 		}
 	}
 
@@ -152,19 +179,27 @@ export class MemberService {
 	 * account that existed before this feature, so it does not.
 	 */
 	public async login(input: LoginInput): Promise<Member> {
-		const { memberNick, memberPassword } = input;
+		const { memberNick } = input;
 		const response = await this.memberModel.findOne({ memberNick: memberNick }).select('+memberPassword').exec();
 
+		/*
+		 * One answer for "no such member" and "wrong password".
+		 *
+		 * These were NO_MEMBER_NICK and WRONG_PASSWORD, so the login form
+		 * said which nicknames exist. A deleted account answers the same way.
+		 * Account state — blocked, pending — is only named AFTER the password
+		 * matched, when the caller has proved it is their account.
+		 */
 		if (!response || response.memberStatus === MemberStatus.DELETE) {
-			throw new InternalServerErrorException(Message.NO_MEMBER_NICK);
-		} else if (response.memberStatus === MemberStatus.BLOCK) {
-			throw new InternalServerErrorException(Message.BLOCKED_USER);
+			throw new UnauthorizedException(ErrorCode.INVALID_CREDENTIALS);
 		}
 
-		//Compare Passwords
-
 		const isMatch = await this.authService.comparePassword(input.memberPassword, response.memberPassword ?? '');
-		if (!isMatch) throw new InternalServerErrorException(Message.WRONG_PASSWORD);
+		if (!isMatch) throw new UnauthorizedException(ErrorCode.INVALID_CREDENTIALS);
+
+		if (response.memberStatus === MemberStatus.BLOCK) {
+			throw new ForbiddenException(ErrorCode.ACCOUNT_BLOCKED);
+		}
 
 		/*
 		 * An agent application that has not been approved gets no session.

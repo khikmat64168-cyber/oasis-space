@@ -8,9 +8,26 @@ export class BatchController {
 	private logger: Logger = new Logger('BatchController');
 	constructor(private readonly batchService: BatchService) {}
 
+	/**
+	 * Rank once on start-up as well as nightly.
+	 *
+	 * The homepage orbits the top plants by plantRank. With only the 01:00
+	 * cron, a server started at any other hour left every rank at 0 until the
+	 * next night, and the homepage had nothing to order by. Same three steps,
+	 * same order, as the nightly run.
+	 */
 	@Timeout(1000)
-	handleTimeout() {
-		this.logger.debug('BATCH SERVER READY');
+	public async handleTimeout() {
+		this.logger['context'] = 'BATCH_STARTUP';
+		this.logger.debug('BATCH SERVER READY — ranking once now');
+		try {
+			await this.batchService.batchRollback();
+			await this.batchService.batchTopPlants();
+			await this.batchService.batchTopAgents();
+			this.logger.debug('startup ranking done');
+		} catch (err) {
+			this.logger.error(err);
+		}
 	}
 
 	@Cron('00 00 01 * * *', { name: BATCH_ROLLBACK })

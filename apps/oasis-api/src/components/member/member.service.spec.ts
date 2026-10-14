@@ -285,3 +285,76 @@ describe('login — an unapproved applicant gets no session', () => {
 		expect(result.accessToken).toBe('access.jwt');
 	});
 });
+
+describe('login — one answer for every wrong pair', () => {
+	const withRow = (row: any, passwordMatches: boolean) => {
+		const ctx = build();
+		(ctx.memberModel as any).findOne = jest.fn().mockReturnValue({
+			select: () => ({ exec: () => Promise.resolve(row) }),
+		});
+		ctx.authService.comparePassword = jest.fn().mockResolvedValue(passwordMatches);
+		return ctx;
+	};
+	const attempt = (svc: any) => svc.login({ memberNick: 'someone', memberPassword: 'Secret123' } as any);
+
+	it('an unknown nickname and a wrong password are indistinguishable', async () => {
+		const unknown = await attempt(withRow(null, false).svc).catch((e: any) => e);
+		const wrong = await attempt(
+			withRow({ _id: 'm1', memberPassword: '$2a$x', memberStatus: 'ACTIVE' }, false).svc,
+		).catch((e: any) => e);
+
+		expect(unknown.message).toBe('INVALID_CREDENTIALS');
+		expect(wrong.message).toBe('INVALID_CREDENTIALS');
+		expect(unknown.getStatus()).toBe(401);
+		expect(wrong.getStatus()).toBe(401);
+	});
+
+	it('a deleted account answers like one that never existed', async () => {
+		const err = await attempt(withRow({ _id: 'm1', memberPassword: '$2a$x', memberStatus: 'DELETE' }, true).svc).catch(
+			(e: any) => e,
+		);
+		expect(err.message).toBe('INVALID_CREDENTIALS');
+	});
+
+	it('names a block only once the password has matched', async () => {
+		const blockedWrong = await attempt(
+			withRow({ _id: 'm1', memberPassword: '$2a$x', memberStatus: 'BLOCK' }, false).svc,
+		).catch((e: any) => e);
+		const blockedRight = await attempt(
+			withRow({ _id: 'm1', memberPassword: '$2a$x', memberStatus: 'BLOCK' }, true).svc,
+		).catch((e: any) => e);
+
+		expect(blockedWrong.message).toBe('INVALID_CREDENTIALS');
+		expect(blockedRight.message).toBe('ACCOUNT_BLOCKED');
+		expect(blockedRight.getStatus()).toBe(403);
+	});
+});
+
+describe('signup — a duplicate says which value is taken, and nothing else is a duplicate', () => {
+	const failingCreate = (err: unknown) => {
+		const ctx = build({ smsConfigured: false });
+		ctx.memberModel.create = jest.fn().mockRejectedValue(err);
+		return ctx;
+	};
+	const dup = (keyPattern: object) => Object.assign(new Error('E11000 duplicate key'), { code: 11000, keyPattern });
+
+	it.each([
+		[{ memberNick: 1 }, 'MEMBER_NICK_TAKEN'],
+		[{ memberPhone: 1 }, 'PHONE_ALREADY_REGISTERED'],
+		[{ memberEmail: 1 }, 'EMAIL_ALREADY_REGISTERED'],
+	])('a collision on %o is %s', async (keyPattern, code) => {
+		const { svc } = failingCreate(dup(keyPattern));
+		const err = await svc.signup(input() as any).catch((e: any) => e);
+		expect(err.message).toBe(code);
+		expect(err.getStatus()).toBe(409);
+	});
+
+	it('an unrelated failure is not reported as a duplicate', async () => {
+		const { svc } = failingCreate(new Error('connection reset'));
+		const err = await svc.signup(input() as any).catch((e: any) => e);
+		// passed through untouched; the GraphQL formatter turns it into a safe
+		// INTERNAL_SERVER_ERROR and logs the original
+		expect(err.message).toBe('connection reset');
+		expect(err.message).not.toMatch(/TAKEN|REGISTERED|already/i);
+	});
+});

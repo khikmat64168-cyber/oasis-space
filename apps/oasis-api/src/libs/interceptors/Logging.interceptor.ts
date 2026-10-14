@@ -16,7 +16,10 @@ export class LoggingInterceptor implements NestInterceptor {
 		} else if (requestType === 'graphql') {
 			/** (1)Print requset  */
 			const gqlContext = GqlExecutionContext.create(context);
-			this.logger.log(`${this.stringify(gqlContext.getContext().req.body)}`, 'REQUEST');
+			// the operation name only: the body carries variables, and a login's
+			// variables are a password
+			const body = gqlContext.getContext().req.body ?? {};
+			this.logger.log(`${body.operationName ?? gqlContext.getInfo()?.fieldName ?? 'anonymous'}`, 'REQUEST');
 
 			/** (2) Error handling  via GraphQl   */
 

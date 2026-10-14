@@ -53,6 +53,62 @@ export enum Message {
 	INSUFFICIENT_STOCK = 'Not enough stock available for this product!',
 }
 
+/**
+ * Stable, machine-readable error codes, sent in `extensions.code` on every
+ * GraphQL error (see libs/errorFormat.ts). The client maps these to what the
+ * user reads; the `message` beside them stays for logs and older callers.
+ *
+ * A code names what the caller can do about the failure, not which line
+ * threw it. Add one only when it lets a form say something more useful.
+ */
+export enum ErrorCode {
+	// input
+	VALIDATION_ERROR = 'VALIDATION_ERROR',
+	BAD_REQUEST = 'BAD_REQUEST',
+	INVALID_FILE_TYPE = 'INVALID_FILE_TYPE',
+	// authentication
+	INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
+	UNAUTHENTICATED = 'UNAUTHENTICATED',
+	ACCESS_TOKEN_EXPIRED = 'ACCESS_TOKEN_EXPIRED',
+	ACCOUNT_BLOCKED = 'ACCOUNT_BLOCKED',
+	// registration — the same uniqueness the Member indexes enforce
+	MEMBER_NICK_TAKEN = 'MEMBER_NICK_TAKEN',
+	PHONE_ALREADY_REGISTERED = 'PHONE_ALREADY_REGISTERED',
+	EMAIL_ALREADY_REGISTERED = 'EMAIL_ALREADY_REGISTERED',
+	ACCOUNT_REGISTRATION_FAILED = 'ACCOUNT_REGISTRATION_FAILED',
+	// authorization
+	FORBIDDEN = 'FORBIDDEN',
+	// resources
+	NOT_FOUND = 'NOT_FOUND',
+	CONFLICT = 'CONFLICT',
+	// everything else
+	RATE_LIMITED = 'RATE_LIMITED',
+	INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR',
+}
+
+/**
+ * The code each authored Message means. Services throw these strings, often
+ * inside an exception class that does not match them (NO_DATA_FOUND inside an
+ * InternalServerErrorException, for one); the message is the reliable signal,
+ * so it decides the code.
+ */
+export const MESSAGE_CODES: Partial<Record<Message, ErrorCode | string>> = {
+	[Message.NO_DATA_FOUND]: ErrorCode.NOT_FOUND,
+	[Message.NOT_AUTHENTICATED]: ErrorCode.UNAUTHENTICATED,
+	[Message.TOKEN_NOT_EXIST]: ErrorCode.UNAUTHENTICATED,
+	[Message.ONLY_SPECIFIC_ROLES_ALLOWED]: ErrorCode.FORBIDDEN,
+	[Message.NOT_ALLOWED_REQUEST]: ErrorCode.FORBIDDEN,
+	[Message.NOT_YOUR_ORDER]: ErrorCode.FORBIDDEN,
+	[Message.BLOCKED_USER]: ErrorCode.ACCOUNT_BLOCKED,
+	[Message.USED_MEMBER_NICK_OR_PHONE]: ErrorCode.CONFLICT,
+	[Message.SELF_SUBSCRIPTION_DENIED]: ErrorCode.CONFLICT,
+	[Message.PROVIDE_ALLOWED_FORMAT]: ErrorCode.INVALID_FILE_TYPE,
+	[Message.PROVIDE_ALLOWED_MODEL_FORMAT]: ErrorCode.INVALID_FILE_TYPE,
+	[Message.INSUFFICIENT_STOCK]: 'INSUFFICIENT_STOCK',
+	[Message.INVALID_ORDER_TRANSITION]: 'INVALID_ORDER_TRANSITION',
+	[Message.INVALID_INSTALLATION_DATE]: 'INVALID_INSTALLATION_DATE',
+};
+
 export enum Direction {
 	ASC = 1,
 	DESC = -1,

@@ -1,5 +1,5 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
-import { IsIn, IsNotEmpty, IsOptional, Length, Min } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, Length, MaxLength, Min } from 'class-validator';
 import { MemberAuthType, MemberStatus, MemberType } from '../../enums/member.enums';
 import { availableAgentsSorts, availableMembersSorts } from '../../config';
 import { Direction } from '../../Errors';
@@ -91,15 +91,24 @@ export class MemberInput {
 	memberAuthType?: MemberAuthType;
 }
 
+/**
+ * Login checks presence and an upper bound only.
+ *
+ * It used to repeat signup's length rules (nick 3–12, password 5–12). A
+ * login that broke them can never match an account anyway, and the 400 they
+ * raised went out as "Bad Request Exception" — while also telling the caller
+ * the password rules. Such a login now gets the same INVALID_CREDENTIALS as
+ * any other wrong pair. The ceilings only bound the work a request can cause.
+ */
 @InputType()
 export class LoginInput {
 	@IsNotEmpty()
-	@Length(3, 12)
+	@MaxLength(64)
 	@Field(() => String)
 	memberNick!: string;
 
 	@IsNotEmpty()
-	@Length(5, 12)
+	@MaxLength(128)
 	@Field(() => String)
 	memberPassword!: string;
 }
