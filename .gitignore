@@ -42,6 +42,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 .env
+# backups of it are the same secret, under a different name
+.env.bak-*
+.env.backup
 # temp directory
 .temp
 .tmp

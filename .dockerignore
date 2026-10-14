@@ -1,0 +1,22 @@
+# Anything that must not travel into the build context.
+# Secrets first: a .env copied into an image is readable by anyone who pulls it.
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+coverage
+
+.git
+.github
+.vscode
+.idea
+*.log
+npm-debug.log*
+
+# Uploaded files belong to the volume, never to the image.
+uploads
+
+# Local-only notes
+*.local.md
