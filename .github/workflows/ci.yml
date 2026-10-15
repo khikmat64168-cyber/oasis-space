@@ -114,7 +114,9 @@ jobs:
         id: start
         run: |
           set -euo pipefail
-          if ! response=$(curl -sS --fail-with-body --max-time 30 \
+          # POST since Coolify 4.4 — a GET now answers "This endpoint has changed
+          # to a POST request." (openapi.yaml at the v4.4.6 tag).
+          if ! response=$(curl -sS --fail-with-body --max-time 30 -X POST \
             -H "Authorization: Bearer $COOLIFY_TOKEN" \
             "$COOLIFY_URL/api/v1/deploy?uuid=$APP_UUID&force=false"); then
             echo "::error::Coolify refused the deploy request: $response"
