@@ -116,7 +116,14 @@ jobs:
           set -euo pipefail
           # POST since Coolify 4.4 — a GET now answers "This endpoint has changed
           # to a POST request." (openapi.yaml at the v4.4.6 tag).
-          if ! response=$(curl -sS --fail-with-body --max-time 30 -X POST \
+          #
+          # --retry: the first live run lost its TCP connection to the server
+          # once (curl 28, connect timeout) and the re-run went straight
+          # through. Coolify queues a deployment and answers at once, so a
+          # retry can at worst queue the same commit twice — a wasted build,
+          # never a wrong one.
+          if ! response=$(curl -sS --fail-with-body --connect-timeout 15 --max-time 30 \
+            --retry 4 --retry-delay 10 -X POST \
             -H "Authorization: Bearer $COOLIFY_TOKEN" \
             "$COOLIFY_URL/api/v1/deploy?uuid=$APP_UUID&force=false"); then
             echo "::error::Coolify refused the deploy request: $response"
@@ -140,7 +147,8 @@ jobs:
           set -euo pipefail
           deadline=$((SECONDS + 30 * 60))
           while :; do
-            if ! body=$(curl -sS --fail-with-body --max-time 30 \
+            if ! body=$(curl -sS --fail-with-body --connect-timeout 15 --max-time 30 \
+              --retry 3 --retry-delay 5 \
               -H "Authorization: Bearer $COOLIFY_TOKEN" \
               "$COOLIFY_URL/api/v1/deployments/$DEPLOYMENT"); then
               echo "::error::Could not read the status of deployment $DEPLOYMENT: $body"
